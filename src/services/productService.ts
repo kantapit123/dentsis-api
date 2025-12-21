@@ -64,7 +64,7 @@ export async function getProductList(): Promise<ProductListItem[]> {
 
 export async function findProductById(productId: string): Promise<ProductListItem> {
     const product = await prisma.product.findUnique({
-        where: { id: productId },
+        where: { barcode: productId },
         include: {
             stockBatches: {
                 select: {

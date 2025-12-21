@@ -3,6 +3,9 @@ import { stockInService } from '../services/stockInService';
 import { stockOutService } from '../services/stockOutService';
 import { stockLogService } from '../services/stockLogService';
 import { StockInRequest, StockOutRequest } from '../types/stock.types';
+import { Product } from '@prisma/client';
+import { prisma } from '../prisma';
+import { findProductById } from '../services/productService';
 
 /**
  * Handles POST /api/stock/in
@@ -151,5 +154,39 @@ export async function stockLogsHandler(req: Request, res: Response): Promise<voi
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+}
+
+export async function createProduct(req: Request, res: Response): Promise<void> {
+  try {
+    const body: Product = req.body;
+    const product = await prisma.product.create({
+      data: {
+        name: body.name,
+        barcode: body.barcode,
+        unit: body.unit,
+        minStock: body.minStock,
+      },
+    });
+    res.status(200).json(product);
+  } catch (error) {
+    console.error('Error in createProductHandler:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+export async function getStockById(req: Request, res: Response): Promise<void> {
+  try {
+    const result = await findProductById(req.params.stockId);
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error in productDetailHandler:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    })
   }
 }

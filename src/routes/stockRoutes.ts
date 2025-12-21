@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { stockInHandler, stockOutHandler, stockLogsHandler } from '../controllers/stockController';
+import { createProduct, getStockById, stockInHandler, stockLogsHandler, stockOutHandler } from '../controllers/stockController';
 import { apiKeyGuard } from '../middlewares/apiKey.middleware';
 
 const router = Router();
@@ -21,6 +21,10 @@ router.post('/out', apiKeyGuard, stockOutHandler);
  * Retrieve stock movement logs grouped by sessionId
  */
 router.get('/logs', apiKeyGuard, stockLogsHandler);
+
+router.post('/create', apiKeyGuard, createProduct);
+
+router.get('/:stockId', apiKeyGuard, getStockById);
 
 
 export default router;
