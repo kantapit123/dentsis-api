@@ -50,14 +50,23 @@ export async function stockOutService(items: StockOutItem[]): Promise<StockOutRe
         }
 
         // Find all batches with available stock, ordered by expireDate (FEFO)
+        // Null expireDate batches are treated as having no expiration (sorted last)
         const batches = await tx.stockBatch.findMany({
           where: {
             productId: product.id,
             quantity: { gt: 0 },
           },
           orderBy: {
-            expireDate: 'asc', // First Expired, First Out
+            expireDate: 'asc', // First Expired, First Out (nulls will be sorted last by default in PostgreSQL)
           },
+        });
+
+        // Sort batches: those with expireDate first (FEFO), then those without expireDate
+        batches.sort((a, b) => {
+          if (a.expireDate === null && b.expireDate === null) return 0;
+          if (a.expireDate === null) return 1; // nulls last
+          if (b.expireDate === null) return -1; // nulls last
+          return a.expireDate.getTime() - b.expireDate.getTime();
         });
 
         // Calculate total available stock

@@ -5,7 +5,7 @@ export interface StockInItem {
   barcode: string;
   quantity: number;
   lotNumber: string;
-  expireDate: string; // ISO date string
+  expireDate: string | null; // ISO date string or null for products without expiration
 }
 
 /**

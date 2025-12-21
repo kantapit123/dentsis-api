@@ -46,20 +46,23 @@ export async function stockInHandler(req: Request, res: Response): Promise<void>
         return;
       }
 
-      if (!item.expireDate || typeof item.expireDate !== 'string') {
-        res.status(400).json({
-          error: 'Invalid request: each item must have a valid expireDate',
-        });
-        return;
-      }
+      // Validate expireDate - can be null or a valid date string
+      if (item.expireDate !== null && item.expireDate !== undefined) {
+        if (typeof item.expireDate !== 'string') {
+          res.status(400).json({
+            error: 'Invalid request: expireDate must be a string or null',
+          });
+          return;
+        }
 
-      // Validate date format
-      const expireDate = new Date(item.expireDate);
-      if (isNaN(expireDate.getTime())) {
-        res.status(400).json({
-          error: 'Invalid request: expireDate must be a valid ISO date string',
-        });
-        return;
+        // Validate date format if provided
+        const expireDate = new Date(item.expireDate);
+        if (isNaN(expireDate.getTime())) {
+          res.status(400).json({
+            error: 'Invalid request: expireDate must be a valid ISO date string or null',
+          });
+          return;
+        }
       }
     }
 

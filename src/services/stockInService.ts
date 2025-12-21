@@ -60,13 +60,26 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
           batchId = updatedBatch.id;
         } else {
           // Create new batch
+          const createData: {
+            productId: string;
+            lotNumber: string;
+            quantity: number;
+            expireDate?: Date | null;
+          } = {
+            productId: product.id,
+            lotNumber: item.lotNumber,
+            quantity: item.quantity,
+          };
+
+          // Only set expireDate if provided (can be null)
+          if (item.expireDate !== null && item.expireDate !== undefined) {
+            createData.expireDate = new Date(item.expireDate);
+          } else {
+            createData.expireDate = null;
+          }
+
           const newBatch = await prisma.stockBatch.create({
-            data: {
-              productId: product.id,
-              lotNumber: item.lotNumber,
-              expireDate: new Date(item.expireDate),
-              quantity: item.quantity,
-            },
+            data: createData as any, // Type assertion needed until Prisma client is regenerated
           });
           batchId = newBatch.id;
         }

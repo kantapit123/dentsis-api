@@ -45,12 +45,12 @@ model Product {
 // This is the SINGLE SOURCE OF TRUTH for stock quantities
 // Each batch tracks a lot number and expiration date for FEFO (First Expired, First Out) logic
 model StockBatch {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   productId  String
-  lotNumber  String   // Lot/batch identifier (may be duplicated across products)
-  expireDate DateTime // Expiration date for FEFO sorting
-  quantity   Int      // Current quantity in this batch (ONLY place quantity is stored)
-  createdAt  DateTime @default(now())
+  lotNumber  String    // Lot/batch identifier (may be duplicated across products)
+  expireDate DateTime? // Expiration date for FEFO sorting (nullable for products without expiration)
+  quantity   Int       // Current quantity in this batch (ONLY place quantity is stored)
+  createdAt  DateTime  @default(now())
 
   // Relations
   product        Product         @relation("ProductStockBatches", fields: [productId], references: [id], onDelete: Cascade)

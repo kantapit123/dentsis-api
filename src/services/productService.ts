@@ -43,11 +43,16 @@ export async function getProductList(): Promise<ProductListItem[]> {
             0
         );
 
-        // Check if any batch expires within 30 days
+        // Check if any batch expires within 30 days, handling null/invalid expireDate
         const nearExpiry = product.stockBatches.some((batch) => {
-            const expireDate = new Date(batch.expireDate);
-            expireDate.setHours(0, 0, 0, 0);
-            return expireDate >= today && expireDate <= thirtyDaysFromNow;
+            if (!batch.expireDate) return false;
+            const expireDateObj = typeof batch.expireDate === 'string' || typeof batch.expireDate === 'number'
+                ? new Date(batch.expireDate)
+                : batch.expireDate; // If already Date object
+
+            if (!(expireDateObj instanceof Date) || isNaN(expireDateObj.getTime())) return false;
+            expireDateObj.setHours(0, 0, 0, 0);
+            return expireDateObj >= today && expireDateObj <= thirtyDaysFromNow;
         });
 
         return {
@@ -75,7 +80,7 @@ export async function findProductById(productId: string): Promise<ProductListIte
         },
     });
     if (!product) {
-        throw new Error('Product not found');
+        throw new Error('Product not found please add the product first');
     }
 
     const today = new Date();
@@ -92,9 +97,14 @@ export async function findProductById(productId: string): Promise<ProductListIte
     );
 
     const nearExpiry = product.stockBatches.some((batch) => {
-        const expireDate = new Date(batch.expireDate);
-        expireDate.setHours(0, 0, 0, 0);
-        return expireDate >= today && expireDate <= thirtyDaysFromNow;
+        if (!batch.expireDate) return false;
+        const expireDateObj = typeof batch.expireDate === 'string' || typeof batch.expireDate === 'number'
+            ? new Date(batch.expireDate)
+            : batch.expireDate; // If already Date object
+
+        if (!(expireDateObj instanceof Date) || isNaN(expireDateObj.getTime())) return false;
+        expireDateObj.setHours(0, 0, 0, 0);
+        return expireDateObj >= today && expireDateObj <= thirtyDaysFromNow;
     });
 
     return {

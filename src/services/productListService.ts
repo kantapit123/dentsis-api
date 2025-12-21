@@ -44,7 +44,11 @@ export async function productListService(): Promise<ProductListItem[]> {
     );
 
     // Check if any batch expires within 30 days
+    // Ignore batches with null expireDate (no expiration)
     const nearExpiry = product.stockBatches.some((batch) => {
+      if (!batch.expireDate) {
+        return false; // No expiration date means not near expiry
+      }
       const expireDate = new Date(batch.expireDate);
       expireDate.setHours(0, 0, 0, 0);
       return expireDate >= today && expireDate <= thirtyDaysFromNow;
