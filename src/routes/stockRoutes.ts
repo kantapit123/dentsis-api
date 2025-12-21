@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { stockInHandler } from '../controllers/stockController';
+import { stockInHandler, stockOutHandler } from '../controllers/stockController';
 
 const router = Router();
 
@@ -8,6 +8,12 @@ const router = Router();
  * Stock-in endpoint for adding inventory
  */
 router.post('/in', stockInHandler);
+
+/**
+ * POST /api/stock/out
+ * Stock-out endpoint with automatic FEFO handling
+ */
+router.post('/out', stockOutHandler);
 
 export default router;
 

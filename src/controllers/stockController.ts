@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { stockInService } from '../services/stockInService';
-import { StockInRequest } from '../types/stock.types';
+import { stockOutService } from '../services/stockOutService';
+import { StockInRequest, StockOutRequest } from '../types/stock.types';
 
 /**
  * Handles POST /api/stock/in
@@ -68,6 +69,66 @@ export async function stockInHandler(req: Request, res: Response): Promise<void>
     res.status(statusCode).json(result);
   } catch (error) {
     console.error('Error in stockInHandler:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * Handles POST /api/stock/out
+ * Processes stock-out operations with automatic FEFO handling
+ */
+export async function stockOutHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const body: StockOutRequest = req.body;
+
+    // Validate request body
+    if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
+      res.status(400).json({
+        error: 'Invalid request: items array is required and must not be empty',
+      });
+      return;
+    }
+
+    // Validate each item
+    for (const item of body.items) {
+      if (!item.barcode || typeof item.barcode !== 'string') {
+        res.status(400).json({
+          error: 'Invalid request: each item must have a valid barcode',
+        });
+        return;
+      }
+
+      if (!item.quantity || typeof item.quantity !== 'number' || item.quantity <= 0) {
+        res.status(400).json({
+          error: 'Invalid request: each item must have a positive quantity',
+        });
+        return;
+      }
+    }
+
+    // Process stock-out
+    const result = await stockOutService(body.items);
+
+    // Check if all items succeeded
+    const allSucceeded = result.results.every((r) => r.success);
+    const statusCode = allSucceeded ? 200 : 207; // 207 Multi-Status if some failed
+
+    res.status(statusCode).json(result);
+  } catch (error) {
+    console.error('Error in stockOutHandler:', error);
+
+    // Handle insufficient stock error specifically
+    if (error instanceof Error && error.message.includes('Insufficient stock')) {
+      res.status(409).json({
+        error: 'Insufficient stock',
+        message: error.message,
+      });
+      return;
+    }
+
     res.status(500).json({
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error',

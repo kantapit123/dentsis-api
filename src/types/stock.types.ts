@@ -36,3 +36,48 @@ export interface StockInResponse {
   results: StockInItemResult[];
 }
 
+/**
+ * Stock-out request item
+ */
+export interface StockOutItem {
+  barcode: string;
+  quantity: number;
+}
+
+/**
+ * Stock-out request body
+ */
+export interface StockOutRequest {
+  items: StockOutItem[];
+}
+
+/**
+ * Stock-out batch deduction detail
+ */
+export interface StockOutBatchDeduction {
+  batchId: string;
+  lotNumber: string;
+  quantity: number;
+}
+
+/**
+ * Stock-out result for a single item
+ */
+export interface StockOutItemResult {
+  barcode: string;
+  productId: string;
+  requestedQuantity: number;
+  deductedQuantity: number;
+  batches: StockOutBatchDeduction[];
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Stock-out response
+ */
+export interface StockOutResponse {
+  sessionId: string;
+  results: StockOutItemResult[];
+}
+
