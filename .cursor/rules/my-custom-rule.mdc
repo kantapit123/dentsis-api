@@ -1,0 +1,6 @@
+---
+alwaysApply: true
+---
+
+- Always write unittest for new feature with Chicago School
+- User TDD (Test Driven Design)

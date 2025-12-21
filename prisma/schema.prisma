@@ -1,0 +1,95 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum for stock movement types
+// IN: Stock entering the system (purchases, returns, adjustments)
+// OUT: Stock leaving the system (usage, transfers, adjustments)
+enum StockMovementType {
+  IN
+  OUT
+}
+
+// Product model represents a catalog item in the clinic inventory
+// IMPORTANT: Product does NOT store total quantity - it's calculated from StockBatch
+// This design ensures quantity is always accurate and supports lot-level tracking
+model Product {
+  id        String   @id @default(uuid())
+  name      String
+  barcode   String   @unique // Unique barcode identifier for the product
+  unit      String   // Unit of measurement (e.g., "box", "unit", "bottle")
+  minStock  Int      // Minimum stock level for alerts/reorder points
+  createdAt DateTime @default(now())
+
+  // Relations
+  stockBatches    StockBatch[]    @relation("ProductStockBatches")
+  stockMovements  StockMovement[] @relation("ProductStockMovements")
+
+  // Index barcode for fast product lookups during stock operations
+  @@index([barcode])
+  @@map("products")
+}
+
+// StockBatch represents a specific lot/batch of a product
+// This is the SINGLE SOURCE OF TRUTH for stock quantities
+// Each batch tracks a lot number and expiration date for FEFO (First Expired, First Out) logic
+model StockBatch {
+  id         String   @id @default(uuid())
+  productId  String
+  lotNumber  String   // Lot/batch identifier (may be duplicated across products)
+  expireDate DateTime // Expiration date for FEFO sorting
+  quantity   Int      // Current quantity in this batch (ONLY place quantity is stored)
+  createdAt  DateTime @default(now())
+
+  // Relations
+  product        Product         @relation("ProductStockBatches", fields: [productId], references: [id], onDelete: Cascade)
+  stockMovements StockMovement[] @relation("BatchStockMovements")
+
+  // Compound index on lotNumber for fast lot-based queries
+  // Index on productId for efficient product-batch lookups
+  @@index([lotNumber])
+  @@index([productId])
+  @@index([productId, expireDate]) // Optimized index for FEFO queries (sorted by expireDate)
+  @@map("stock_batches")
+}
+
+// StockMovement records all stock transactions for auditability
+// Every stock IN/OUT operation creates a movement record
+// IMPORTANT: Always references a specific batch (lot) - no aggregate movements
+// The lotNumber is stored redundantly for audit trail even though batchId exists
+model StockMovement {
+  id         String            @id @default(uuid())
+  productId  String
+  batchId    String            // Required reference to the batch (lot) being moved
+  lotNumber  String            // Stored for audit trail and faster queries without joins
+  type       StockMovementType // IN or OUT
+  quantity   Int               // Quantity moved (positive number, direction determined by type)
+  sessionId  String?           @default(uuid()) // Optional: for grouping related movements (e.g., bulk operations)
+  createdAt  DateTime          @default(now())
+
+  // Relations
+  product Product    @relation("ProductStockMovements", fields: [productId], references: [id], onDelete: Cascade)
+  batch   StockBatch @relation("BatchStockMovements", fields: [batchId], references: [id], onDelete: Restrict)
+
+  // Indexes for common query patterns
+  @@index([productId])
+  @@index([batchId])
+  @@index([lotNumber])
+  @@index([type])
+  @@index([sessionId]) // For bulk operation queries
+  @@index([createdAt]) // For chronological queries and reports
+  @@map("stock_movements")
+}
+
