@@ -1,12 +1,11 @@
 import { randomUUID } from 'crypto';
-import { prisma } from '../lib/prisma';
+import { prisma } from '../prisma';
 import {
   StockOutItem,
   StockOutResponse,
   StockOutItemResult,
   StockOutBatchDeduction,
 } from '../types/stock.types';
-import { $Enums } from '../../generated/prisma/client';
 
 /**
  * Processes stock-out operations with automatic FEFO (First Expired, First Out) handling
@@ -98,7 +97,7 @@ export async function stockOutService(items: StockOutItem[]): Promise<StockOutRe
               productId: product.id,
               batchId: batch.id,
               lotNumber: batch.lotNumber,
-              type: $Enums.StockMovementType.OUT,
+              type: 'OUT',
               quantity: quantityToDeduct,
               sessionId: sessionId,
             },

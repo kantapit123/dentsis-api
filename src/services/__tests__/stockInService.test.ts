@@ -1,10 +1,9 @@
 import { stockInService } from '../stockInService';
-import { prisma } from '../../lib/prisma';
 import { StockInItem } from '../../types/stock.types';
-import { $Enums } from '../../../generated/prisma/client';
+import { prisma } from '../../prisma';
 
 // Mock Prisma client
-jest.mock('../../lib/prisma', () => ({
+jest.mock('../../prisma', () => ({
   prisma: {
     $transaction: jest.fn(),
     product: {
@@ -60,7 +59,7 @@ describe('stockInService', () => {
         productId: 'product-1',
         batchId: 'batch-1',
         lotNumber: 'LOT001',
-        type: $Enums.StockMovementType.IN,
+        type: 'IN',
         quantity: 50,
         sessionId: 'session-1',
         createdAt: new Date(),
@@ -142,7 +141,7 @@ describe('stockInService', () => {
         productId: 'product-1',
         batchId: 'batch-1',
         lotNumber: 'LOT001',
-        type: $Enums.StockMovementType.IN,
+        type: 'IN',
         quantity: 20,
         sessionId: 'session-1',
         createdAt: new Date(),

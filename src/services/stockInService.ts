@@ -1,7 +1,6 @@
 import { randomUUID } from 'crypto';
-import { prisma } from '../lib/prisma';
+import { prisma } from '../prisma';
 import { StockInItem, StockInResponse, StockInItemResult } from '../types/stock.types';
-import { $Enums } from '../../generated/prisma/client';
 
 /**
  * Processes stock-in operations for one or more items
@@ -15,13 +14,13 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
   const sessionId = randomUUID();
 
   // Process all items within a single transaction
-  const results = await prisma.$transaction(async (tx) => {
+  const results = await prisma.$transaction(async () => {
     const itemResults: StockInItemResult[] = [];
 
     for (const item of items) {
       try {
         // Resolve product by barcode
-        const product = await tx.product.findUnique({
+        const product = await prisma.product.findUnique({
           where: { barcode: item.barcode },
         });
 
@@ -39,7 +38,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
         }
 
         // Check if batch already exists for this product + lot combination
-        const existingBatch = await tx.stockBatch.findFirst({
+        const existingBatch = await prisma.stockBatch.findFirst({
           where: {
             productId: product.id,
             lotNumber: item.lotNumber,
@@ -50,7 +49,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
 
         if (existingBatch) {
           // Update existing batch quantity
-          const updatedBatch = await tx.stockBatch.update({
+          const updatedBatch = await prisma.stockBatch.update({
             where: { id: existingBatch.id },
             data: {
               quantity: {
@@ -61,7 +60,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
           batchId = updatedBatch.id;
         } else {
           // Create new batch
-          const newBatch = await tx.stockBatch.create({
+          const newBatch = await prisma.stockBatch.create({
             data: {
               productId: product.id,
               lotNumber: item.lotNumber,
@@ -73,12 +72,12 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
         }
 
         // Create movement record for audit trail
-        await tx.stockMovement.create({
+        await prisma.stockMovement.create({
           data: {
             productId: product.id,
             batchId: batchId,
             lotNumber: item.lotNumber,
-            type: $Enums.StockMovementType.IN,
+            type: 'IN',
             quantity: item.quantity,
             sessionId: sessionId,
           },

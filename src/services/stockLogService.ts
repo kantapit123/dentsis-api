@@ -1,4 +1,4 @@
-import { prisma } from '../lib/prisma';
+import { prisma } from '../prisma';
 import { StockLogsResponse, StockLogEntry, StockLogLotBreakdown } from '../types/stock.types';
 
 /**

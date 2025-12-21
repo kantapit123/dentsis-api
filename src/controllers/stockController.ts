@@ -153,4 +153,3 @@ export async function stockLogsHandler(req: Request, res: Response): Promise<voi
     });
   }
 }
-

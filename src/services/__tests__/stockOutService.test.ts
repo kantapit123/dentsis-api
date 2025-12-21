@@ -1,10 +1,9 @@
 import { stockOutService } from '../stockOutService';
-import { prisma } from '../../lib/prisma';
+import { prisma } from '../../prisma';
 import { StockOutItem } from '../../types/stock.types';
-import { $Enums } from '../../../generated/prisma/client';
 
 // Mock Prisma client
-jest.mock('../../lib/prisma', () => ({
+jest.mock('../../prisma', () => ({
   prisma: {
     $transaction: jest.fn(),
     product: {
@@ -113,7 +112,7 @@ describe('stockOutService', () => {
           productId: 'product-1',
           batchId: 'batch-1',
           lotNumber: 'LOT001',
-          type: $Enums.StockMovementType.OUT,
+          type: 'OUT',
           quantity: 30,
           sessionId: expect.any(String),
         },

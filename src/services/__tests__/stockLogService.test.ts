@@ -1,8 +1,8 @@
 import { stockLogService } from '../stockLogService';
-import { prisma } from '../../lib/prisma';
+import { prisma } from '../../prisma';
 
 // Mock Prisma client
-jest.mock('../../lib/prisma', () => ({
+jest.mock('../../prisma', () => ({
   prisma: {
     stockMovement: {
       findMany: jest.fn(),
