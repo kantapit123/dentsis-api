@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { stockInService } from '../services/stockInService';
 import { stockOutService } from '../services/stockOutService';
+import { stockLogService } from '../services/stockLogService';
 import { StockInRequest, StockOutRequest } from '../types/stock.types';
 
 /**
@@ -129,6 +130,23 @@ export async function stockOutHandler(req: Request, res: Response): Promise<void
       return;
     }
 
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * Handles GET /api/stock/logs
+ * Retrieves stock movement logs grouped by sessionId
+ */
+export async function stockLogsHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const result = await stockLogService();
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error in stockLogsHandler:', error);
     res.status(500).json({
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error',

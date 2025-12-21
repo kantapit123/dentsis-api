@@ -81,3 +81,32 @@ export interface StockOutResponse {
   results: StockOutItemResult[];
 }
 
+/**
+ * Lot breakdown for a stock movement session
+ */
+export interface StockLogLotBreakdown {
+  lotNumber: string;
+  quantity: number;
+}
+
+/**
+ * Stock movement log entry grouped by session
+ */
+export interface StockLogEntry {
+  sessionId: string;
+  productName: string;
+  productId: string;
+  type: 'IN' | 'OUT';
+  timestamp: Date;
+  totalQuantity: number;
+  lots: StockLogLotBreakdown[];
+}
+
+/**
+ * Stock logs response
+ */
+export interface StockLogsResponse {
+  logs: StockLogEntry[];
+  total: number;
+}
+
