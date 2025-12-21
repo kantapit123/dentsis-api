@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { dashboardService } from '../services/dashboardService';
-import { productListService } from '../services/productListService';
+import { findProductById, getProductList } from '../services/productService';
 
 /**
  * Handles GET /api/dashboard
@@ -23,9 +23,9 @@ export async function dashboardHandler(req: Request, res: Response): Promise<voi
  * Handles GET /api/products
  * Returns product list with stock information
  */
-export async function productListHandler(req: Request, res: Response): Promise<void> {
+export async function getProducts(req: Request, res: Response): Promise<void> {
   try {
-    const result = await productListService();
+    const result = await getProductList();
     res.status(200).json(result);
   } catch (error) {
     console.error('Error in productListHandler:', error);
@@ -36,3 +36,15 @@ export async function productListHandler(req: Request, res: Response): Promise<v
   }
 }
 
+export async function getProductById(req: Request, res: Response): Promise<void> {
+  try {
+    const result = await findProductById(req.params.productId);
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error in productDetailHandler:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+}
