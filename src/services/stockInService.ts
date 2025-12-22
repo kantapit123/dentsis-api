@@ -71,8 +71,9 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
             quantity: item.quantity,
           };
 
-          // Only set expireDate if provided (can be null)
-          if (item.expireDate !== null && item.expireDate !== undefined) {
+          // Only set expireDate if provided (can be null or empty string)
+          // Treat empty string as null
+          if (item.expireDate !== null && item.expireDate !== undefined && item.expireDate !== '') {
             createData.expireDate = new Date(item.expireDate);
           } else {
             createData.expireDate = null;

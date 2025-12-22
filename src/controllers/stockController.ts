@@ -46,8 +46,9 @@ export async function stockInHandler(req: Request, res: Response): Promise<void>
         return;
       }
 
-      // Validate expireDate - can be null or a valid date string
-      if (item.expireDate !== null && item.expireDate !== undefined) {
+      // Validate expireDate - can be null, empty string, or a valid date string
+      // Treat empty string as null
+      if (item.expireDate !== null && item.expireDate !== undefined && item.expireDate !== '') {
         if (typeof item.expireDate !== 'string') {
           res.status(400).json({
             error: 'Invalid request: expireDate must be a string or null',
