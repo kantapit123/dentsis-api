@@ -8,6 +8,7 @@ import { DashboardSummary } from '../types/dashboard.types';
  * - totalStockQuantity: Sum of all batch quantities
  * - lowStockCount: Products where totalQuantity < minStock
  * - nearExpiryCount: Products with at least one batch expiring within 30 days
+ * - expiredCount: Products with at least one batch that has expired
  * 
  * @returns DashboardSummary with calculated statistics
  */
@@ -70,10 +71,28 @@ export async function dashboardService(): Promise<DashboardSummary> {
   const uniqueProductIds = new Set(nearExpiryBatches.map((batch) => batch.productId));
   const nearExpiryCount = uniqueProductIds.size;
 
+  // Calculate expired count
+  // Get all batches that have expired (expireDate < today)
+  const expiredBatches = await prisma.stockBatch.findMany({
+    where: {
+      expireDate: {
+        lt: today,
+      },
+    },
+    select: {
+      productId: true,
+    },
+  });
+
+  // Get unique product IDs for expired products
+  const uniqueExpiredProductIds = new Set(expiredBatches.map((batch) => batch.productId));
+  const expiredCount = uniqueExpiredProductIds.size;
+
   return {
     totalProducts,
     lowStockCount,
     nearExpiryCount,
+    expiredCount,
     totalStockQuantity,
   };
 }

@@ -39,11 +39,9 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
         ];
     }
 
-    // Get total count for pagination
-    const total = await prisma.product.count({ where });
-
-    // Fetch products with their batches (with pagination)
-    const products = await prisma.product.findMany({
+    // Fetch all products with their batches (we need all to calculate status)
+    // Status filtering will be done in memory after calculation
+    const allProducts = await prisma.product.findMany({
         where,
         include: {
             stockBatches: {
@@ -56,8 +54,6 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
         orderBy: {
             name: 'asc',
         },
-        skip,
-        take: limit,
     });
 
     // Calculate today and 30 days from now for expiry check
@@ -70,7 +66,7 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
     thirtyDaysFromNow.setHours(23, 59, 59, 999);
 
     // Transform products to include calculated fields
-    const data = products.map((product) => {
+    let data = allProducts.map((product) => {
         // Calculate total quantity from batches
         const totalQuantity = product.stockBatches.reduce(
             (sum, batch) => sum + batch.quantity,
@@ -89,6 +85,29 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
             return expireDateObj >= today && expireDateObj <= thirtyDaysFromNow;
         });
 
+        // Find earliest expireDate from all batches (for products with expiration)
+        const validExpireDates = product.stockBatches
+            .map((batch) => {
+                if (!batch.expireDate) return null;
+                const expireDateObj = typeof batch.expireDate === 'string' || typeof batch.expireDate === 'number'
+                    ? new Date(batch.expireDate)
+                    : batch.expireDate;
+                if (!(expireDateObj instanceof Date) || isNaN(expireDateObj.getTime())) return null;
+                return expireDateObj;
+            })
+            .filter((date): date is Date => date !== null);
+
+        const expireDate = validExpireDates.length > 0
+            ? new Date(Math.min(...validExpireDates.map(d => d.getTime()))).toISOString()
+            : null;
+
+        // Check if any batch has expired (expireDate < today)
+        const isExpired = validExpireDates.some((expireDateObj) => {
+            const expireDateCopy = new Date(expireDateObj);
+            expireDateCopy.setHours(0, 0, 0, 0);
+            return expireDateCopy < today;
+        });
+
         return {
             id: product.id,
             name: product.name,
@@ -97,14 +116,43 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
             minStock: product.minStock,
             totalQuantity,
             nearExpiry,
+            expireDate,
+            isExpired,
         };
     });
+
+    // Filter by status if provided
+    if (query?.status) {
+        data = data.filter((product) => {
+            switch (query.status) {
+                case 'lowStock':
+                    return product.totalQuantity < product.minStock;
+                case 'nearExpiry':
+                    return product.nearExpiry === true;
+                case 'inStock':
+                    // inStock means: has stock (totalQuantity > 0) AND meets minimum stock requirement
+                    return product.totalQuantity > 0 && product.totalQuantity >= product.minStock;
+                case 'outOfStock':
+                    return product.totalQuantity === 0;
+                case 'expired':
+                    return product.isExpired === true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    // Get total count after status filtering
+    const total = data.length;
+
+    // Apply pagination after filtering
+    const paginatedData = data.slice(skip, skip + limit);
 
     // Calculate total pages
     const totalPages = Math.ceil(total / limit);
 
     return {
-        data,
+        data: paginatedData,
         pagination: {
             page,
             limit,
@@ -154,6 +202,29 @@ export async function findProductById(productId: string): Promise<ProductListIte
         return expireDateObj >= today && expireDateObj <= thirtyDaysFromNow;
     });
 
+    // Find earliest expireDate from all batches (for products with expiration)
+    const validExpireDates = product.stockBatches
+        .map((batch) => {
+            if (!batch.expireDate) return null;
+            const expireDateObj = typeof batch.expireDate === 'string' || typeof batch.expireDate === 'number'
+                ? new Date(batch.expireDate)
+                : batch.expireDate;
+            if (!(expireDateObj instanceof Date) || isNaN(expireDateObj.getTime())) return null;
+            return expireDateObj;
+        })
+        .filter((date): date is Date => date !== null);
+
+    const expireDate = validExpireDates.length > 0
+        ? new Date(Math.min(...validExpireDates.map(d => d.getTime()))).toISOString()
+        : null;
+
+    // Check if any batch has expired (expireDate < today)
+    const isExpired = validExpireDates.some((expireDateObj) => {
+        const expireDateCopy = new Date(expireDateObj);
+        expireDateCopy.setHours(0, 0, 0, 0);
+        return expireDateCopy < today;
+    });
+
     return {
         id: product.id,
         name: product.name,
@@ -162,6 +233,8 @@ export async function findProductById(productId: string): Promise<ProductListIte
         minStock: product.minStock,
         totalQuantity,
         nearExpiry,
+        expireDate,
+        isExpired,
     };
 }
 

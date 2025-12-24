@@ -27,7 +27,7 @@ describe('dashboardService', () => {
         _sum: { quantity: 1000 },
       });
       (prisma.product.findMany as jest.Mock).mockResolvedValue([]);
-      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const result = await dashboardService();
 
@@ -41,7 +41,7 @@ describe('dashboardService', () => {
         _sum: { quantity: 2500 },
       });
       (prisma.product.findMany as jest.Mock).mockResolvedValue([]);
-      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const result = await dashboardService();
 
@@ -80,7 +80,7 @@ describe('dashboardService', () => {
         _sum: { quantity: 130 },
       });
       (prisma.product.findMany as jest.Mock).mockResolvedValue(mockProducts);
-      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const result = await dashboardService();
 
@@ -128,7 +128,7 @@ describe('dashboardService', () => {
         _sum: { quantity: 100 },
       });
       (prisma.product.findMany as jest.Mock).mockResolvedValue([]);
-      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue(mockBatches);
+      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValueOnce(mockBatches).mockResolvedValueOnce([]);
 
       const result = await dashboardService();
 
@@ -149,7 +149,7 @@ describe('dashboardService', () => {
           stockBatches: [], // No batches
         },
       ]);
-      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const result = await dashboardService();
 
@@ -163,14 +163,56 @@ describe('dashboardService', () => {
         _sum: { quantity: null },
       });
       (prisma.product.findMany as jest.Mock).mockResolvedValue([]);
-      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const result = await dashboardService();
 
       expect(result.totalProducts).toBe(0);
       expect(result.lowStockCount).toBe(0);
       expect(result.nearExpiryCount).toBe(0);
+      expect(result.expiredCount).toBe(0);
       expect(result.totalStockQuantity).toBe(0);
+    });
+
+    it('should calculate expired count correctly', async () => {
+      const today = new Date();
+      const expiredDate = new Date(today);
+      expiredDate.setDate(today.getDate() - 10); // 10 days ago
+
+      const futureDate = new Date(today);
+      futureDate.setDate(today.getDate() + 20); // 20 days from now
+
+      const mockExpiredBatches = [
+        {
+          productId: 'product-1',
+          expireDate: expiredDate, // Expired
+        },
+        {
+          productId: 'product-2',
+          expireDate: expiredDate, // Expired
+        },
+        {
+          productId: 'product-1',
+          expireDate: futureDate, // Same product, but this batch is fine
+        },
+        {
+          productId: 'product-3',
+          expireDate: expiredDate, // Expired
+        },
+      ];
+
+      (prisma.product.count as jest.Mock).mockResolvedValue(3);
+      (prisma.stockBatch.aggregate as jest.Mock).mockResolvedValue({
+        _sum: { quantity: 100 },
+      });
+      (prisma.product.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValueOnce(mockExpiredBatches);
+
+      const result = await dashboardService();
+
+      // Should count unique products with expired batches
+      expect(result.expiredCount).toBe(3); // product-1, product-2, and product-3
+      expect(prisma.stockBatch.findMany).toHaveBeenCalledTimes(2);
     });
   });
 });

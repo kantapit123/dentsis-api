@@ -5,6 +5,7 @@ export interface DashboardSummary {
   totalProducts: number;
   lowStockCount: number;
   nearExpiryCount: number;
+  expiredCount: number;
   totalStockQuantity: number;
 }
 
@@ -19,6 +20,8 @@ export interface ProductListItem {
   minStock: number;
   totalQuantity: number;
   nearExpiry: boolean;
+  expireDate: string | null; // ISO date string of earliest expiring batch, or null if no expiration
+  isExpired: boolean; // true if any batch has expired
 }
 
 /**
@@ -40,11 +43,17 @@ export interface PaginatedProductListResponse {
 }
 
 /**
+ * Product status filter options
+ */
+export type ProductStatus = 'lowStock' | 'nearExpiry' | 'inStock' | 'outOfStock' | 'expired';
+
+/**
  * Product list query parameters
  */
 export interface ProductListQuery {
   search?: string;
   page?: number;
   limit?: number;
+  status?: ProductStatus;
 }
 
