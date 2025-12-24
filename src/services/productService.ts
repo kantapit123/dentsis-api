@@ -1,5 +1,5 @@
 import { prisma } from '../prisma';
-import { ProductListItem } from '../types/dashboard.types';
+import { ProductListItem, PaginatedProductListResponse, ProductListQuery } from '../types/dashboard.types';
 
 /**
  * Retrieves product list with stock information
@@ -7,12 +7,44 @@ import { ProductListItem } from '../types/dashboard.types';
  * - totalQuantity: Sum of all batches per product
  * - nearExpiry: true if any batch expires within 30 days
  * - Ordered by name ASC
+ * - Supports search by product name or barcode
+ * - Supports pagination
  * 
- * @returns Array of ProductListItem with stock information
+ * @param query - Query parameters for search and pagination
+ * @returns PaginatedProductListResponse with products and pagination metadata
  */
-export async function getProductList(): Promise<ProductListItem[]> {
-    // Fetch all products with their batches
+export async function getProductList(query?: ProductListQuery): Promise<PaginatedProductListResponse> {
+    // Default pagination values
+    const page = query?.page && query.page > 0 ? query.page : 1;
+    const limit = query?.limit && query.limit > 0 ? Math.min(query.limit, 100) : 20; // Max 100 per page
+    const skip = (page - 1) * limit;
+
+    // Build where clause for search
+    const where: any = {};
+    if (query?.search && query.search.trim()) {
+        const searchTerm = query.search.trim();
+        where.OR = [
+            {
+                name: {
+                    contains: searchTerm,
+                    mode: 'insensitive', // Case-insensitive search
+                },
+            },
+            {
+                barcode: {
+                    contains: searchTerm,
+                    mode: 'insensitive',
+                },
+            },
+        ];
+    }
+
+    // Get total count for pagination
+    const total = await prisma.product.count({ where });
+
+    // Fetch products with their batches (with pagination)
     const products = await prisma.product.findMany({
+        where,
         include: {
             stockBatches: {
                 select: {
@@ -24,6 +56,8 @@ export async function getProductList(): Promise<ProductListItem[]> {
         orderBy: {
             name: 'asc',
         },
+        skip,
+        take: limit,
     });
 
     // Calculate today and 30 days from now for expiry check
@@ -36,7 +70,7 @@ export async function getProductList(): Promise<ProductListItem[]> {
     thirtyDaysFromNow.setHours(23, 59, 59, 999);
 
     // Transform products to include calculated fields
-    return products.map((product) => {
+    const data = products.map((product) => {
         // Calculate total quantity from batches
         const totalQuantity = product.stockBatches.reduce(
             (sum, batch) => sum + batch.quantity,
@@ -65,6 +99,19 @@ export async function getProductList(): Promise<ProductListItem[]> {
             nearExpiry,
         };
     });
+
+    // Calculate total pages
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+        data,
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages,
+        },
+    };
 }
 
 export async function findProductById(productId: string): Promise<ProductListItem> {
