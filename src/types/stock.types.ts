@@ -110,3 +110,28 @@ export interface StockLogsResponse {
   total: number;
 }
 
+/**
+ * Stock log entry for API response (grouped by sessionId only)
+ */
+export interface StockLogResponseEntry {
+  sessionId: string | null;
+  type: 'IN' | 'OUT';
+  createdAt: string; // ISO date string
+  productName: string;
+  totalQuantity: number;
+  lots: Array<{
+    lot: string;
+    quantity: number;
+  }>;
+}
+
+/**
+ * Query filters for stock logs
+ */
+export interface StockLogFilters {
+  type?: 'IN' | 'OUT';
+  fromDate?: string; // YYYY-MM-DD
+  toDate?: string; // YYYY-MM-DD
+  filter?: 'today' | '7days'; // Predefined date filters
+}
+

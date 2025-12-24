@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { stockInService } from '../services/stockInService';
 import { stockOutService } from '../services/stockOutService';
 import { stockLogService } from '../services/stockLogService';
+import { getStockLogsService } from '../services/getStockLogsService';
 import { StockInRequest, StockOutRequest } from '../types/stock.types';
 import { Product } from '@prisma/client';
 import { prisma } from '../prisma';
@@ -147,10 +148,73 @@ export async function stockOutHandler(req: Request, res: Response): Promise<void
 /**
  * Handles GET /api/stock/logs
  * Retrieves stock movement logs grouped by sessionId
+ * 
+ * Query parameters:
+ * - type: IN | OUT (optional)
+ * - fromDate: YYYY-MM-DD (optional)
+ * - toDate: YYYY-MM-DD (optional)
+ * - filter: today | 7days (optional, predefined date filters)
  */
 export async function stockLogsHandler(req: Request, res: Response): Promise<void> {
   try {
-    const result = await stockLogService();
+    // Extract query parameters
+    const type = req.query.type as 'IN' | 'OUT' | undefined;
+    const fromDate = req.query.fromDate as string | undefined;
+    const toDate = req.query.toDate as string | undefined;
+    const filter = req.query.filter as 'today' | '7days' | undefined;
+
+    // Validate type if provided
+    if (type && type !== 'IN' && type !== 'OUT') {
+      res.status(400).json({
+        error: 'Invalid request: type must be IN or OUT',
+      });
+      return;
+    }
+
+    // Validate filter if provided
+    if (filter && filter !== 'today' && filter !== '7days') {
+      res.status(400).json({
+        error: 'Invalid request: filter must be "today" or "7days"',
+      });
+      return;
+    }
+
+    // Validate date formats if provided
+    if (fromDate) {
+      const fromDateObj = new Date(fromDate);
+      if (isNaN(fromDateObj.getTime())) {
+        res.status(400).json({
+          error: 'Invalid request: fromDate must be in YYYY-MM-DD format',
+        });
+        return;
+      }
+    }
+
+    if (toDate) {
+      const toDateObj = new Date(toDate);
+      if (isNaN(toDateObj.getTime())) {
+        res.status(400).json({
+          error: 'Invalid request: toDate must be in YYYY-MM-DD format',
+        });
+        return;
+      }
+    }
+
+    // Build filters object
+    const filters: {
+      type?: 'IN' | 'OUT';
+      fromDate?: string;
+      toDate?: string;
+      filter?: 'today' | '7days';
+    } = {};
+
+    if (type) filters.type = type;
+    if (fromDate) filters.fromDate = fromDate;
+    if (toDate) filters.toDate = toDate;
+    if (filter) filters.filter = filter;
+
+    // Get stock logs
+    const result = await getStockLogsService(filters);
     res.status(200).json(result);
   } catch (error) {
     console.error('Error in stockLogsHandler:', error);
