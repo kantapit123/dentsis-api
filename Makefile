@@ -1,5 +1,5 @@
 # Variables
-REGISTRY ?= localhost:5000
+REGISTRY ?= 192.168.1.60:5000
 IMAGE_NAME ?= dentsis-api
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "latest")
 FULL_IMAGE_NAME = $(REGISTRY)/$(IMAGE_NAME):$(VERSION)
