@@ -19,6 +19,11 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
 
     for (const item of items) {
       try {
+        // Auto-generate lotNumber if not provided
+        const effectiveLotNumber = (item.lotNumber && item.lotNumber.trim())
+          ? item.lotNumber.trim()
+          : `AUTO-${Date.now()}-${randomUUID().slice(0, 8)}`;
+
         // Resolve product by barcode
         const product = await prisma.product.findUnique({
           where: { barcode: item.barcode },
@@ -29,7 +34,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
             barcode: item.barcode,
             productId: '',
             batchId: '',
-            lotNumber: item.lotNumber,
+            lotNumber: effectiveLotNumber,
             quantity: item.quantity,
             success: false,
             error: `Product not found for barcode: ${item.barcode}`,
@@ -41,7 +46,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
         const existingBatch = await prisma.stockBatch.findFirst({
           where: {
             productId: product.id,
-            lotNumber: item.lotNumber,
+            lotNumber: effectiveLotNumber,
           },
         });
 
@@ -67,7 +72,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
             expireDate?: Date | null;
           } = {
             productId: product.id,
-            lotNumber: item.lotNumber,
+            lotNumber: effectiveLotNumber,
             quantity: item.quantity,
           };
 
@@ -90,7 +95,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
           data: {
             productId: product.id,
             batchId: batchId,
-            lotNumber: item.lotNumber,
+            lotNumber: effectiveLotNumber,
             type: 'IN',
             quantity: item.quantity,
             sessionId: sessionId,
@@ -101,17 +106,20 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
           barcode: item.barcode,
           productId: product.id,
           batchId: batchId,
-          lotNumber: item.lotNumber,
+          lotNumber: effectiveLotNumber,
           quantity: item.quantity,
           success: true,
         });
       } catch (error) {
         // Handle any unexpected errors
+        const errorLotNumber = (item.lotNumber && item.lotNumber.trim()) 
+          ? item.lotNumber.trim() 
+          : `AUTO-${Date.now()}-${randomUUID().slice(0, 8)}`;
         itemResults.push({
           barcode: item.barcode,
           productId: '',
           batchId: '',
-          lotNumber: item.lotNumber,
+          lotNumber: errorLotNumber,
           quantity: item.quantity,
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error occurred',

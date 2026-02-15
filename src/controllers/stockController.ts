@@ -40,13 +40,6 @@ export async function stockInHandler(req: Request, res: Response): Promise<void>
         return;
       }
 
-      if (!item.lotNumber || typeof item.lotNumber !== 'string') {
-        res.status(400).json({
-          error: 'Invalid request: each item must have a valid lotNumber',
-        });
-        return;
-      }
-
       // Validate expireDate - can be null, empty string, or a valid date string
       // Treat empty string as null
       if (item.expireDate !== null && item.expireDate !== undefined && item.expireDate !== '') {

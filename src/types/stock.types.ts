@@ -4,7 +4,7 @@
 export interface StockInItem {
   barcode: string;
   quantity: number;
-  lotNumber: string;
+  lotNumber?: string; // Optional - backend auto-generates if omitted
   expireDate: string | null; // ISO date string or null for products without expiration
 }
 
