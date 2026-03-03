@@ -43,15 +43,37 @@ export async function productListService(): Promise<ProductListItem[]> {
       0
     );
 
+    // Normalize and collect valid expire dates
+    const validExpireDates = product.stockBatches
+      .map((batch) => {
+        if (!batch.expireDate) return null;
+        const expireDateObj =
+          typeof batch.expireDate === 'string' || typeof batch.expireDate === 'number'
+            ? new Date(batch.expireDate)
+            : batch.expireDate;
+        if (!(expireDateObj instanceof Date) || isNaN(expireDateObj.getTime())) return null;
+        return expireDateObj;
+      })
+      .filter((date): date is Date => date !== null);
+
     // Check if any batch expires within 30 days
-    // Ignore batches with null expireDate (no expiration)
-    const nearExpiry = product.stockBatches.some((batch) => {
-      if (!batch.expireDate) {
-        return false; // No expiration date means not near expiry
-      }
-      const expireDate = new Date(batch.expireDate);
+    const nearExpiry = validExpireDates.some((expireDateObj) => {
+      const expireDate = new Date(expireDateObj);
       expireDate.setHours(0, 0, 0, 0);
       return expireDate >= today && expireDate <= thirtyDaysFromNow;
+    });
+
+    // Earliest expire date as ISO string (or null)
+    const expireDate =
+      validExpireDates.length > 0
+        ? new Date(Math.min(...validExpireDates.map((d) => d.getTime()))).toISOString()
+        : null;
+
+    // Check if any batch has already expired
+    const isExpired = validExpireDates.some((expireDateObj) => {
+      const expireDateCopy = new Date(expireDateObj);
+      expireDateCopy.setHours(0, 0, 0, 0);
+      return expireDateCopy < today;
     });
 
     return {
@@ -62,6 +84,8 @@ export async function productListService(): Promise<ProductListItem[]> {
       minStock: product.minStock,
       totalQuantity,
       nearExpiry,
+      expireDate,
+      isExpired,
     };
   });
 }
