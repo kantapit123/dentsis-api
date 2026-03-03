@@ -37,6 +37,9 @@ RUN yarn install --frozen-lockfile --production
 # Copy Prisma files
 COPY prisma ./prisma
 
+# Generate Prisma Client in production image
+RUN npx prisma generate
+
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
