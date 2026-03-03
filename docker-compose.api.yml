@@ -10,7 +10,4 @@ services:
       - DATABASE_URL=postgresql://admin:P@ssw0rd@db:5432/dentsis
     ports:
       - "3000:3000"
-    depends_on:
-      db:
-        condition: service_healthy
     restart: always
