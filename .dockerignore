@@ -18,7 +18,11 @@ postgres_data
 .DS_Store
 docker-compose.yml
 jest.config.js
-tsconfig.json
+#
+# Keep tsconfig.json in the Docker build context so TypeScript
+# uses the same project configuration inside the container.
+# (Ignoring it caused tsc to behave differently when building in Docker.)
+# tsconfig.json
 *.test.ts
 *.test.js
 __tests__
