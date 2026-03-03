@@ -4,10 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: dentsis-api
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - DATABASE_URL=postgresql://admin:P@ssw0rd@db:5432/dentsis
+    env_file:
+      - .env
     ports:
       - "3000:3000"
     restart: always
