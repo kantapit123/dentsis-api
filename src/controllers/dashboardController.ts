@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { dashboardService } from '../services/dashboardService';
 import { findProductById, getProductList } from '../services/productService';
+import { prisma } from '../prisma';
 
 /**
  * Handles GET /api/dashboard
@@ -77,6 +78,76 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
     res.status(200).json(result);
   } catch (error) {
     console.error('Error in getProducts:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * Handles PUT /api/products/:id
+ * Updates a product by id
+ */
+export async function updateProductHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const { id } = req.params;
+    const { name, barcode, unit, minStock } = req.body;
+
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Product not found' });
+      return;
+    }
+
+    // Check barcode uniqueness if barcode is being changed
+    if (barcode && barcode !== existing.barcode) {
+      const duplicate = await prisma.product.findUnique({ where: { barcode } });
+      if (duplicate) {
+        res.status(409).json({ error: 'Barcode already in use by another product' });
+        return;
+      }
+    }
+
+    const updated = await prisma.product.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(barcode !== undefined && { barcode }),
+        ...(unit !== undefined && { unit }),
+        ...(minStock !== undefined && { minStock }),
+      },
+    });
+
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error('Error in updateProductHandler:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * Handles DELETE /api/products/:id
+ * Deletes a product and all related stock batches/movements (cascade)
+ */
+export async function deleteProductHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const { id } = req.params;
+
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Product not found' });
+      return;
+    }
+
+    await prisma.product.delete({ where: { id } });
+
+    res.status(200).json({ message: 'Product deleted successfully' });
+  } catch (error) {
+    console.error('Error in deleteProductHandler:', error);
     res.status(500).json({
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error',
