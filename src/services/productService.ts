@@ -126,12 +126,12 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
         data = data.filter((product) => {
             switch (query.status) {
                 case 'lowStock':
-                    return product.totalQuantity < product.minStock;
+                    return product.totalQuantity > 0 && product.totalQuantity <= product.minStock;
                 case 'nearExpiry':
                     return product.nearExpiry === true;
                 case 'inStock':
-                    // inStock means: has stock (totalQuantity > 0) AND meets minimum stock requirement
-                    return product.totalQuantity > 0 && product.totalQuantity >= product.minStock;
+                    // inStock means: has stock AND above minimum stock threshold
+                    return product.totalQuantity > 0 && product.totalQuantity > product.minStock;
                 case 'outOfStock':
                     return product.totalQuantity === 0;
                 case 'expired':

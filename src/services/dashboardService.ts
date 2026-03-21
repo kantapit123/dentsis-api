@@ -36,13 +36,13 @@ export async function dashboardService(): Promise<DashboardSummary> {
   });
 
   // Calculate low stock count
-  // A product is low stock if sum of batch quantities < minStock
+  // A product is low stock if totalQuantity > 0 AND totalQuantity <= minStock
   const lowStockCount = products.filter((product) => {
     const totalQuantity = product.stockBatches.reduce(
       (sum, batch) => sum + batch.quantity,
       0
     );
-    return totalQuantity < product.minStock;
+    return totalQuantity > 0 && totalQuantity <= product.minStock;
   }).length;
 
   // Calculate near expiry count
