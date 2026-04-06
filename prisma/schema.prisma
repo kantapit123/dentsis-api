@@ -91,3 +91,43 @@ model StockMovement {
   @@index([createdAt]) // For chronological queries and reports
   @@map("stock_movements")
 }
+
+// Patient Gender enum
+enum PatientGender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+// Patient Title Prefix enum (Thai title prefixes)
+enum PatientTitlePrefix {
+  MISTER
+  MRS
+  MISS
+  YOUNG_BOY
+  YOUNG_GIRL
+  OTHER
+}
+
+// Patient model represents a patient record in the clinic
+model Patient {
+  id          String             @id @default(uuid())
+  datestamp   DateTime
+  nationalId  String             @unique
+  titlePrefix PatientTitlePrefix
+  firstName   String
+  lastName    String
+  dateOfBirth DateTime
+  gender      PatientGender
+  cardNo      String?
+  address     String?            @db.Text
+  photoBase64 String?            @db.Text
+
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([nationalId])
+  @@index([lastName])
+  @@index([createdAt])
+  @@map("patients")
+}
