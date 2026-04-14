@@ -25,12 +25,14 @@ enum StockMovementType {
 // IMPORTANT: Product does NOT store total quantity - it's calculated from StockBatch
 // This design ensures quantity is always accurate and supports lot-level tracking
 model Product {
-  id        String   @id @default(uuid())
-  name      String
-  barcode   String   @unique // Unique barcode identifier for the product
-  unit      String   // Unit of measurement (e.g., "box", "unit", "bottle")
-  minStock  Int      // Minimum stock level for alerts/reorder points
-  createdAt DateTime @default(now())
+  id            String   @id @default(uuid())
+  name          String
+  barcode       String   @unique // Unique barcode identifier for the product
+  unit          String   // Unit of measurement (e.g., "box", "unit", "bottle")
+  minStock      Int      // Minimum stock level for alerts/reorder points
+  isReusable    Boolean  @default(false) // true for items like chemicals/resins that can be used multiple times
+  inUseQuantity Int      @default(0) // Quantity currently in use (for reusable items only)
+  createdAt     DateTime @default(now())
 
   // Relations
   stockBatches    StockBatch[]    @relation("ProductStockBatches")
