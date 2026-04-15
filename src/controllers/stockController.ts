@@ -3,6 +3,8 @@ import { stockInService } from '../services/stockInService';
 import { stockOutService } from '../services/stockOutService';
 import { stockLogService } from '../services/stockLogService';
 import { getStockLogsService } from '../services/getStockLogsService';
+import { withdrawService } from '../services/withdrawService';
+import { depleteService } from '../services/depleteService';
 import { StockInRequest, StockOutRequest } from '../types/stock.types';
 import { Product } from '@prisma/client';
 import { prisma } from '../prisma';
@@ -215,6 +217,76 @@ export async function stockLogsHandler(req: Request, res: Response): Promise<voi
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+}
+
+/**
+ * Handles POST /api/stock/withdraw
+ * Moves reusable items from warehouse to in-use (inUseQuantity)
+ */
+export async function withdrawHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: 'Invalid request: items array is required and must not be empty' });
+      return;
+    }
+
+    for (const item of items) {
+      if (!item.barcode || typeof item.barcode !== 'string') {
+        res.status(400).json({ error: 'Invalid request: each item must have a valid barcode' });
+        return;
+      }
+      if (!item.quantity || typeof item.quantity !== 'number' || item.quantity <= 0) {
+        res.status(400).json({ error: 'Invalid request: each item must have a positive quantity' });
+        return;
+      }
+    }
+
+    const result = await withdrawService(items);
+    const allSucceeded = result.results.every((r) => r.success);
+    res.status(allSucceeded ? 200 : 207).json(result);
+  } catch (error) {
+    console.error('Error in withdrawHandler:', error);
+    if (error instanceof Error && error.message.includes('Insufficient stock')) {
+      res.status(409).json({ error: 'Insufficient stock', message: error.message });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', message: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+/**
+ * Handles POST /api/stock/deplete
+ * Marks reusable in-use items as consumed (decrements inUseQuantity)
+ */
+export async function depleteHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: 'Invalid request: items array is required and must not be empty' });
+      return;
+    }
+
+    for (const item of items) {
+      if (!item.barcode || typeof item.barcode !== 'string') {
+        res.status(400).json({ error: 'Invalid request: each item must have a valid barcode' });
+        return;
+      }
+      if (!item.quantity || typeof item.quantity !== 'number' || item.quantity <= 0) {
+        res.status(400).json({ error: 'Invalid request: each item must have a positive quantity' });
+        return;
+      }
+    }
+
+    const result = await depleteService(items);
+    const allSucceeded = result.results.every((r) => r.success);
+    res.status(allSucceeded ? 200 : 207).json(result);
+  } catch (error) {
+    console.error('Error in depleteHandler:', error);
+    res.status(500).json({ error: 'Internal server error', message: error instanceof Error ? error.message : 'Unknown error' });
   }
 }
 

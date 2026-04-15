@@ -16,9 +16,13 @@ datasource db {
 // Enum for stock movement types
 // IN: Stock entering the system (purchases, returns, adjustments)
 // OUT: Stock leaving the system (usage, transfers, adjustments)
+// WITHDRAW: Reusable item moved from warehouse to in-use (warehouse -= qty, inUseQuantity += qty)
+// DEPLETE: Reusable item consumed (inUseQuantity -= qty, no batch reference)
 enum StockMovementType {
   IN
   OUT
+  WITHDRAW
+  DEPLETE
 }
 
 // Product model represents a catalog item in the clinic inventory
@@ -73,16 +77,16 @@ model StockBatch {
 model StockMovement {
   id         String            @id @default(uuid())
   productId  String
-  batchId    String            // Required reference to the batch (lot) being moved
-  lotNumber  String            // Stored for audit trail and faster queries without joins
-  type       StockMovementType // IN or OUT
+  batchId    String?           // Nullable for DEPLETE movements (no specific batch)
+  lotNumber  String?           // Nullable for DEPLETE movements
+  type       StockMovementType // IN, OUT, WITHDRAW, or DEPLETE
   quantity   Int               // Quantity moved (positive number, direction determined by type)
   sessionId  String?           @default(uuid()) // Optional: for grouping related movements (e.g., bulk operations)
   createdAt  DateTime          @default(now())
 
   // Relations
-  product Product    @relation("ProductStockMovements", fields: [productId], references: [id], onDelete: Cascade)
-  batch   StockBatch @relation("BatchStockMovements", fields: [batchId], references: [id], onDelete: Restrict)
+  product Product     @relation("ProductStockMovements", fields: [productId], references: [id], onDelete: Cascade)
+  batch   StockBatch? @relation("BatchStockMovements", fields: [batchId], references: [id], onDelete: Restrict)
 
   // Indexes for common query patterns
   @@index([productId])

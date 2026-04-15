@@ -49,18 +49,19 @@ export async function stockLogService(): Promise<StockLogsResponse> {
       const existing = groupedMap.get(groupKey)!;
       existing.totalQuantity += movement.quantity;
 
-      // Update or add lot breakdown
-      const lotIndex = existing.lots.findIndex(
-        (lot) => lot.lotNumber === movement.lotNumber
-      );
-
-      if (lotIndex >= 0) {
-        existing.lots[lotIndex].quantity += movement.quantity;
-      } else {
-        existing.lots.push({
-          lotNumber: movement.lotNumber,
-          quantity: movement.quantity,
-        });
+      // Update or add lot breakdown (DEPLETE movements have no lotNumber — skip)
+      if (movement.lotNumber !== null) {
+        const lotIndex = existing.lots.findIndex(
+          (lot) => lot.lotNumber === movement.lotNumber
+        );
+        if (lotIndex >= 0) {
+          existing.lots[lotIndex].quantity += movement.quantity;
+        } else {
+          existing.lots.push({
+            lotNumber: movement.lotNumber,
+            quantity: movement.quantity,
+          });
+        }
       }
 
       // Update timestamp if this movement is older (we want the earliest timestamp in the group)
@@ -76,12 +77,9 @@ export async function stockLogService(): Promise<StockLogsResponse> {
         type: movement.type as 'IN' | 'OUT',
         timestamp: movement.createdAt,
         totalQuantity: movement.quantity,
-        lots: [
-          {
-            lotNumber: movement.lotNumber,
-            quantity: movement.quantity,
-          },
-        ],
+        lots: movement.lotNumber !== null
+          ? [{ lotNumber: movement.lotNumber, quantity: movement.quantity }]
+          : [],
       });
     }
   }

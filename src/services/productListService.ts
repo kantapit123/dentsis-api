@@ -76,13 +76,21 @@ export async function productListService(): Promise<ProductListItem[]> {
       return expireDateCopy < today;
     });
 
+    const warehouseQuantity = totalQuantity;
+    const effectiveTotalQuantity = product.isReusable
+      ? warehouseQuantity + product.inUseQuantity
+      : warehouseQuantity;
+
     return {
       id: product.id,
       name: product.name,
       barcode: product.barcode,
       unit: product.unit,
       minStock: product.minStock,
-      totalQuantity,
+      isReusable: product.isReusable,
+      warehouseQuantity,
+      inUseQuantity: product.inUseQuantity,
+      totalQuantity: effectiveTotalQuantity,
       nearExpiry,
       expireDate,
       isExpired,

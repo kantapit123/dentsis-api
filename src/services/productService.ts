@@ -108,13 +108,22 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
             return expireDateCopy < today;
         });
 
+        // For reusable items: totalQuantity = warehouse + in_use
+        const warehouseQuantity = totalQuantity;
+        const effectiveTotalQuantity = product.isReusable
+            ? warehouseQuantity + product.inUseQuantity
+            : warehouseQuantity;
+
         return {
             id: product.id,
             name: product.name,
             barcode: product.barcode,
             unit: product.unit,
             minStock: product.minStock,
-            totalQuantity,
+            isReusable: product.isReusable,
+            warehouseQuantity,
+            inUseQuantity: product.inUseQuantity,
+            totalQuantity: effectiveTotalQuantity,
             nearExpiry,
             expireDate,
             isExpired,
@@ -124,16 +133,20 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
     // Filter by status if provided
     if (query?.status) {
         data = data.filter((product) => {
+            // For reusable items, isOutOfStock = warehouse AND inUse are both 0
+            const isOutOfStock = product.isReusable
+                ? product.warehouseQuantity === 0 && product.inUseQuantity === 0
+                : product.warehouseQuantity === 0;
+
             switch (query.status) {
                 case 'lowStock':
-                    return product.totalQuantity > 0 && product.totalQuantity <= product.minStock;
+                    return !isOutOfStock && product.warehouseQuantity <= product.minStock;
                 case 'nearExpiry':
                     return product.nearExpiry === true;
                 case 'inStock':
-                    // inStock means: has stock AND above minimum stock threshold
-                    return product.totalQuantity > 0 && product.totalQuantity > product.minStock;
+                    return !isOutOfStock && product.warehouseQuantity > product.minStock;
                 case 'outOfStock':
-                    return product.totalQuantity === 0;
+                    return isOutOfStock;
                 case 'expired':
                     return product.isExpired === true;
                 default:
@@ -225,13 +238,21 @@ export async function findProductById(productId: string): Promise<ProductListIte
         return expireDateCopy < today;
     });
 
+    const warehouseQuantity = totalQuantity;
+    const effectiveTotalQuantity = product.isReusable
+        ? warehouseQuantity + product.inUseQuantity
+        : warehouseQuantity;
+
     return {
         id: product.id,
         name: product.name,
         barcode: product.barcode,
         unit: product.unit,
         minStock: product.minStock,
-        totalQuantity,
+        isReusable: product.isReusable,
+        warehouseQuantity,
+        inUseQuantity: product.inUseQuantity,
+        totalQuantity: effectiveTotalQuantity,
         nearExpiry,
         expireDate,
         isExpired,

@@ -18,7 +18,10 @@ export interface ProductListItem {
   barcode: string;
   unit: string;
   minStock: number;
-  totalQuantity: number;
+  isReusable: boolean;
+  warehouseQuantity: number; // Quantity available in warehouse (from batches)
+  inUseQuantity: number;     // Quantity currently in use (reusable items only)
+  totalQuantity: number;     // warehouseQuantity + inUseQuantity
   nearExpiry: boolean;
   expireDate: string | null; // ISO date string of earliest expiring batch, or null if no expiration
   isExpired: boolean; // true if any batch has expired

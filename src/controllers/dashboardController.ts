@@ -92,11 +92,20 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
 export async function updateProductHandler(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { name, barcode, unit, minStock } = req.body;
+    const { name, barcode, unit, minStock, isReusable } = req.body;
 
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) {
       res.status(404).json({ error: 'Product not found' });
+      return;
+    }
+
+    // Block isReusable toggle when items are currently in use
+    if (isReusable !== undefined && isReusable !== existing.isReusable && existing.inUseQuantity > 0) {
+      res.status(409).json({
+        error: 'Cannot change reusable status while items are in use',
+        inUseQuantity: existing.inUseQuantity,
+      });
       return;
     }
 
@@ -116,6 +125,7 @@ export async function updateProductHandler(req: Request, res: Response): Promise
         ...(barcode !== undefined && { barcode }),
         ...(unit !== undefined && { unit }),
         ...(minStock !== undefined && { minStock }),
+        ...(isReusable !== undefined && { isReusable }),
       },
     });
 

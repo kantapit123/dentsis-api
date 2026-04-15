@@ -93,7 +93,7 @@ export interface StockLogLotBreakdown {
  * Stock movement log entry grouped by session
  */
 export interface StockLogEntry {
-  sessionId: string;
+  sessionId: string | null;
   productName: string;
   productId: string;
   type: 'IN' | 'OUT';
@@ -133,5 +133,66 @@ export interface StockLogFilters {
   fromDate?: string; // YYYY-MM-DD
   toDate?: string; // YYYY-MM-DD
   filter?: 'today' | '7days'; // Predefined date filters
+}
+
+// ─── Reusable Item Types ───────────────────────────────────────────────────
+
+/**
+ * Withdraw request item (reusable items only: warehouse → in_use)
+ */
+export interface WithdrawItem {
+  barcode: string;
+  quantity: number;
+}
+
+/**
+ * Withdraw result for a single item
+ */
+export interface WithdrawItemResult {
+  barcode: string;
+  productId: string;
+  requestedQuantity: number;
+  deductedQuantity: number;
+  inUseAfter: number;
+  batches: StockOutBatchDeduction[];
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Withdraw response
+ */
+export interface WithdrawResponse {
+  sessionId: string;
+  results: WithdrawItemResult[];
+}
+
+/**
+ * Deplete request item (reusable items only: in_use → consumed)
+ */
+export interface DepleteItem {
+  barcode: string;
+  quantity: number;
+}
+
+/**
+ * Deplete result for a single item
+ */
+export interface DepleteItemResult {
+  barcode: string;
+  productId: string;
+  quantity: number;
+  inUseAfter: number;
+  isOutOfStock: boolean;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Deplete response
+ */
+export interface DepleteResponse {
+  sessionId: string;
+  results: DepleteItemResult[];
 }
 

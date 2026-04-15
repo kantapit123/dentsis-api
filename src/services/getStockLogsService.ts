@@ -104,18 +104,19 @@ export async function getStockLogsService(
       const existing = groupedMap.get(groupKey)!;
       existing.totalQuantity += movement.quantity;
 
-      // Update or add lot breakdown
-      const lotIndex = existing.lots.findIndex(
-        (lot) => lot.lot === movement.lotNumber
-      );
-
-      if (lotIndex >= 0) {
-        existing.lots[lotIndex].quantity += movement.quantity;
-      } else {
-        existing.lots.push({
-          lot: movement.lotNumber,
-          quantity: movement.quantity,
-        });
+      // Update or add lot breakdown (DEPLETE movements have no lotNumber — skip)
+      if (movement.lotNumber !== null) {
+        const lotIndex = existing.lots.findIndex(
+          (lot) => lot.lot === movement.lotNumber
+        );
+        if (lotIndex >= 0) {
+          existing.lots[lotIndex].quantity += movement.quantity;
+        } else {
+          existing.lots.push({
+            lot: movement.lotNumber,
+            quantity: movement.quantity,
+          });
+        }
       }
 
       // Update createdAt if this movement is older (we want the earliest timestamp in the group)
@@ -132,12 +133,9 @@ export async function getStockLogsService(
         createdAt: movement.createdAt.toISOString(),
         productName: movement.product.name,
         totalQuantity: movement.quantity,
-        lots: [
-          {
-            lot: movement.lotNumber,
-            quantity: movement.quantity,
-          },
-        ],
+        lots: movement.lotNumber !== null
+          ? [{ lot: movement.lotNumber, quantity: movement.quantity }]
+          : [],
       });
     }
   }
