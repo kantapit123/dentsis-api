@@ -18,11 +18,13 @@ datasource db {
 // OUT: Stock leaving the system (usage, transfers, adjustments)
 // WITHDRAW: Reusable item moved from warehouse to in-use (warehouse -= qty, inUseQuantity += qty)
 // DEPLETE: Reusable item consumed (inUseQuantity -= qty, no batch reference)
+// DISPOSE: Warehouse stock discarded from a specific batch with a reason
 enum StockMovementType {
   IN
   OUT
   WITHDRAW
   DEPLETE
+  DISPOSE
 }
 
 // Product model represents a catalog item in the clinic inventory
@@ -82,8 +84,9 @@ model StockMovement {
   productId  String
   batchId    String?           // Nullable for DEPLETE movements (no specific batch)
   lotNumber  String?           // Nullable for DEPLETE movements
-  type       StockMovementType // IN, OUT, WITHDRAW, or DEPLETE
+  type       StockMovementType // IN, OUT, WITHDRAW, DEPLETE, or DISPOSE
   quantity   Int               // Quantity moved (positive number, direction determined by type)
+  reason     String?           // Optional reason for DISPOSE movements
   sessionId  String?           @default(uuid()) // Optional: for grouping related movements (e.g., bulk operations)
   createdAt  DateTime          @default(now())
 

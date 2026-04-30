@@ -1,4 +1,4 @@
-export type StockMovementLogType = 'IN' | 'OUT' | 'WITHDRAW' | 'DEPLETE';
+export type StockMovementLogType = 'IN' | 'OUT' | 'WITHDRAW' | 'DEPLETE' | 'DISPOSE';
 
 /**
  * Stock-in request item
@@ -84,6 +84,44 @@ export interface StockOutResponse {
 }
 
 /**
+ * Dispose request item (warehouse stock discarded from one or more batches)
+ */
+export interface DisposeItem {
+  barcode: string;
+  quantity: number;
+  reason: string;
+}
+
+/**
+ * Dispose request body
+ */
+export interface DisposeRequest {
+  items: DisposeItem[];
+}
+
+/**
+ * Dispose result for a single item
+ */
+export interface DisposeItemResult {
+  barcode: string;
+  productId: string;
+  requestedQuantity: number;
+  disposedQuantity: number;
+  reason: string;
+  batches: StockOutBatchDeduction[];
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Dispose response
+ */
+export interface DisposeResponse {
+  sessionId: string;
+  results: DisposeItemResult[];
+}
+
+/**
  * Lot breakdown for a stock movement session
  */
 export interface StockLogLotBreakdown {
@@ -101,6 +139,7 @@ export interface StockLogEntry {
   type: StockMovementLogType;
   timestamp: Date;
   totalQuantity: number;
+  reason?: string | null;
   lots: StockLogLotBreakdown[];
 }
 
@@ -121,6 +160,7 @@ export interface StockLogResponseEntry {
   createdAt: string; // ISO date string
   productName: string;
   totalQuantity: number;
+  reason?: string | null;
   lots: Array<{
     lot: string;
     quantity: number;

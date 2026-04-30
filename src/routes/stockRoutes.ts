@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createProduct, getStockById, stockInHandler, stockLogsHandler, stockOutHandler, withdrawHandler, depleteHandler } from '../controllers/stockController';
+import { createProduct, getStockById, stockInHandler, stockLogsHandler, stockOutHandler, withdrawHandler, depleteHandler, disposeHandler } from '../controllers/stockController';
 import { apiKeyGuard } from '../middlewares/apiKey.middleware';
 
 const router = Router();
@@ -33,6 +33,12 @@ router.post('/withdraw', apiKeyGuard, withdrawHandler);
  * Deplete reusable items: in-use → consumed
  */
 router.post('/deplete', apiKeyGuard, depleteHandler);
+
+/**
+ * POST /api/stock/dispose
+ * Dispose warehouse stock with an audit reason
+ */
+router.post('/dispose', apiKeyGuard, disposeHandler);
 
 router.post('/create', apiKeyGuard, createProduct);
 

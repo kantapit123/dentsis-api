@@ -5,7 +5,8 @@ import { stockLogService } from '../services/stockLogService';
 import { getStockLogsService } from '../services/getStockLogsService';
 import { withdrawService } from '../services/withdrawService';
 import { depleteService } from '../services/depleteService';
-import { StockInRequest, StockOutRequest } from '../types/stock.types';
+import { disposeService } from '../services/disposeService';
+import { DisposeRequest, StockInRequest, StockMovementLogType, StockOutRequest } from '../types/stock.types';
 import { Product } from '@prisma/client';
 import { prisma } from '../prisma';
 import { findProductById } from '../services/productService';
@@ -153,15 +154,15 @@ export async function stockOutHandler(req: Request, res: Response): Promise<void
 export async function stockLogsHandler(req: Request, res: Response): Promise<void> {
   try {
     // Extract query parameters
-    const type = req.query.type as 'IN' | 'OUT' | 'WITHDRAW' | 'DEPLETE' | undefined;
+    const type = req.query.type as StockMovementLogType | undefined;
     const fromDate = req.query.fromDate as string | undefined;
     const toDate = req.query.toDate as string | undefined;
     const filter = req.query.filter as 'today' | '7days' | undefined;
 
     // Validate type if provided
-    if (type && type !== 'IN' && type !== 'OUT' && type !== 'WITHDRAW' && type !== 'DEPLETE') {
+    if (type && !['IN', 'OUT', 'WITHDRAW', 'DEPLETE', 'DISPOSE'].includes(type)) {
       res.status(400).json({
-        error: 'Invalid request: type must be IN, OUT, WITHDRAW, or DEPLETE',
+        error: 'Invalid request: type must be IN, OUT, WITHDRAW, DEPLETE, or DISPOSE',
       });
       return;
     }
@@ -197,7 +198,7 @@ export async function stockLogsHandler(req: Request, res: Response): Promise<voi
 
     // Build filters object
     const filters: {
-      type?: 'IN' | 'OUT' | 'WITHDRAW' | 'DEPLETE';
+      type?: StockMovementLogType;
       fromDate?: string;
       toDate?: string;
       filter?: 'today' | '7days';
@@ -286,6 +287,47 @@ export async function depleteHandler(req: Request, res: Response): Promise<void>
     res.status(allSucceeded ? 200 : 207).json(result);
   } catch (error) {
     console.error('Error in depleteHandler:', error);
+    res.status(500).json({ error: 'Internal server error', message: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+/**
+ * Handles POST /api/stock/dispose
+ * Discards warehouse stock from batches with an audit reason.
+ */
+export async function disposeHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const body: DisposeRequest = req.body;
+
+    if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
+      res.status(400).json({ error: 'Invalid request: items array is required and must not be empty' });
+      return;
+    }
+
+    for (const item of body.items) {
+      if (!item.barcode || typeof item.barcode !== 'string') {
+        res.status(400).json({ error: 'Invalid request: each item must have a valid barcode' });
+        return;
+      }
+      if (!item.quantity || typeof item.quantity !== 'number' || item.quantity <= 0) {
+        res.status(400).json({ error: 'Invalid request: each item must have a positive quantity' });
+        return;
+      }
+      if (!item.reason || typeof item.reason !== 'string' || item.reason.trim().length === 0) {
+        res.status(400).json({ error: 'Invalid request: each item must have a non-empty reason' });
+        return;
+      }
+    }
+
+    const result = await disposeService(body.items);
+    const allSucceeded = result.results.every((r) => r.success);
+    res.status(allSucceeded ? 200 : 207).json(result);
+  } catch (error) {
+    console.error('Error in disposeHandler:', error);
+    if (error instanceof Error && error.message.includes('Insufficient stock')) {
+      res.status(409).json({ error: 'Insufficient stock', message: error.message });
+      return;
+    }
     res.status(500).json({ error: 'Internal server error', message: error instanceof Error ? error.message : 'Unknown error' });
   }
 }

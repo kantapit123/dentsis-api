@@ -85,7 +85,7 @@ export async function getStockLogsService(
     },
   });
 
-  // Group movements by sessionId + type + productId
+  // Group movements by sessionId + type + productId (+ reason for DISPOSE)
   // If sessionId is null, treat each movement as its own group
   // This ensures that:
   // - Bulk operations (same sessionId) are grouped together
@@ -94,10 +94,13 @@ export async function getStockLogsService(
   const groupedMap = new Map<string, StockLogResponseEntry>();
 
   for (const movement of movements) {
-    // Create group key: sessionId|type|productId
+    const movementReason = (movement as { reason?: string | null }).reason ?? null;
+    const reasonKey = movement.type === 'DISPOSE' ? movementReason || '' : '';
+
+    // Create group key: sessionId|type|productId|reason
     // If sessionId is null, use movement id to make it unique
     const sessionKey = movement.sessionId || `single-${movement.id}`;
-    const groupKey = `${sessionKey}|${movement.type}|${movement.productId}`;
+    const groupKey = `${sessionKey}|${movement.type}|${movement.productId}|${reasonKey}`;
 
     if (groupedMap.has(groupKey)) {
       // Update existing group
@@ -133,6 +136,7 @@ export async function getStockLogsService(
         createdAt: movement.createdAt.toISOString(),
         productName: movement.product.name,
         totalQuantity: movement.quantity,
+        reason: movementReason,
         lots: movement.lotNumber !== null
           ? [{ lot: movement.lotNumber, quantity: movement.quantity }]
           : [],

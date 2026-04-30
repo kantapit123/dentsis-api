@@ -34,15 +34,18 @@ export async function stockLogService(): Promise<StockLogsResponse> {
     },
   });
 
-  // Group movements by sessionId + productId + type
+  // Group movements by sessionId + productId + type (+ reason for DISPOSE)
   // Use a composite key to ensure proper grouping
   const groupedMap = new Map<string, StockLogEntry>();
 
   for (const movement of movements) {
-    // Create composite key: sessionId|productId|type
+    const movementReason = (movement as { reason?: string | null }).reason ?? null;
+    const reasonKey = movement.type === 'DISPOSE' ? movementReason || '' : '';
+
+    // Create composite key: sessionId|productId|type|reason
     // Handle null sessionId by using movement id as fallback
     const sessionKey = movement.sessionId || `single-${movement.id}`;
-    const groupKey = `${sessionKey}|${movement.productId}|${movement.type}`;
+    const groupKey = `${sessionKey}|${movement.productId}|${movement.type}|${reasonKey}`;
 
     if (groupedMap.has(groupKey)) {
       // Update existing group
@@ -74,9 +77,10 @@ export async function stockLogService(): Promise<StockLogsResponse> {
         sessionId: sessionKey,
         productName: movement.product.name,
         productId: movement.productId,
-        type: movement.type as 'IN' | 'OUT',
+        type: movement.type,
         timestamp: movement.createdAt,
         totalQuantity: movement.quantity,
+        reason: movementReason,
         lots: movement.lotNumber !== null
           ? [{ lotNumber: movement.lotNumber, quantity: movement.quantity }]
           : [],

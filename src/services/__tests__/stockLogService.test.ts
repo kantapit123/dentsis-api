@@ -193,6 +193,76 @@ describe('stockLogService', () => {
       expect(result.logs[0].type).toBe('IN');
       expect(result.logs[1].type).toBe('OUT');
     });
+
+    it('should group DISPOSE movements by reason and expose the disposal reason', async () => {
+      const mockMovements = [
+        {
+          id: 'movement-1',
+          productId: 'product-1',
+          batchId: 'batch-1',
+          lotNumber: 'LOT001',
+          type: 'DISPOSE',
+          quantity: 2,
+          reason: 'EXPIRED',
+          sessionId: 'session-1',
+          createdAt: new Date('2025-01-15T10:00:00Z'),
+          product: {
+            id: 'product-1',
+            name: 'Product A',
+          },
+        },
+        {
+          id: 'movement-2',
+          productId: 'product-1',
+          batchId: 'batch-2',
+          lotNumber: 'LOT002',
+          type: 'DISPOSE',
+          quantity: 3,
+          reason: 'EXPIRED',
+          sessionId: 'session-1',
+          createdAt: new Date('2025-01-15T10:01:00Z'),
+          product: {
+            id: 'product-1',
+            name: 'Product A',
+          },
+        },
+        {
+          id: 'movement-3',
+          productId: 'product-1',
+          batchId: 'batch-3',
+          lotNumber: 'LOT003',
+          type: 'DISPOSE',
+          quantity: 1,
+          reason: 'DAMAGED',
+          sessionId: 'session-1',
+          createdAt: new Date('2025-01-15T10:02:00Z'),
+          product: {
+            id: 'product-1',
+            name: 'Product A',
+          },
+        },
+      ];
+
+      (prisma.stockMovement.findMany as jest.Mock).mockResolvedValue(mockMovements);
+
+      const result = await stockLogService();
+
+      expect(result.logs).toHaveLength(2);
+
+      const expiredLog = result.logs.find((log) => log.reason === 'EXPIRED');
+      expect(expiredLog).toBeDefined();
+      expect(expiredLog?.type).toBe('DISPOSE');
+      expect(expiredLog?.totalQuantity).toBe(5);
+      expect(expiredLog?.lots).toEqual([
+        { lotNumber: 'LOT001', quantity: 2 },
+        { lotNumber: 'LOT002', quantity: 3 },
+      ]);
+
+      const damagedLog = result.logs.find((log) => log.reason === 'DAMAGED');
+      expect(damagedLog).toBeDefined();
+      expect(damagedLog?.totalQuantity).toBe(1);
+      expect(damagedLog?.lots).toEqual([{ lotNumber: 'LOT003', quantity: 1 }]);
+    });
   });
 
   describe('when no movements exist', () => {
