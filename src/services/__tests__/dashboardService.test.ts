@@ -98,28 +98,22 @@ describe('dashboardService', () => {
 
     it('should calculate near expiry count correctly', async () => {
       const today = new Date();
-      const within30Days = new Date(today);
-      within30Days.setDate(today.getDate() + 20); // 20 days from now
+      const within6Months = new Date(today);
+      within6Months.setDate(today.getDate() + 120); // within 6 months
 
-      const beyond30Days = new Date(today);
-      beyond30Days.setDate(today.getDate() + 45); // 45 days from now
+      const beyond6Months = new Date(today);
+      beyond6Months.setDate(today.getDate() + 220); // beyond 6 months
 
       const mockBatches = [
         {
           productId: 'product-1',
-          expireDate: within30Days, // Within 30 days
-        },
-        {
-          productId: 'product-2',
-          expireDate: beyond30Days, // Beyond 30 days
-        },
-        {
-          productId: 'product-1',
-          expireDate: beyond30Days, // Same product, but this batch is fine
+          expireDate: within6Months,
+          quantity: 10,
         },
         {
           productId: 'product-3',
-          expireDate: within30Days, // Within 30 days
+          expireDate: within6Months,
+          quantity: 5,
         },
       ];
 

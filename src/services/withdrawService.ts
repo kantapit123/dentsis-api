@@ -8,7 +8,7 @@ import {
 } from '../types/stock.types';
 
 /**
- * Processes withdrawal operations for reusable items using FEFO.
+ * Processes withdrawal operations for reusable items using strict FIFO.
  * Unlike stockOut, this moves stock from warehouse to in-use (inUseQuantity),
  * so the item does NOT trigger an out-of-stock alert when warehouse reaches 0.
  *
@@ -55,17 +55,17 @@ export async function withdrawService(items: WithdrawItem[]): Promise<WithdrawRe
           continue;
         }
 
-        // FEFO: find batches with stock, sort by expireDate (nulls last)
-        const batches = await tx.stockBatch.findMany({
-          where: { productId: product.id, quantity: { gt: 0 } },
-          orderBy: { expireDate: 'asc' },
-        });
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
 
-        batches.sort((a, b) => {
-          if (a.expireDate === null && b.expireDate === null) return 0;
-          if (a.expireDate === null) return 1;
-          if (b.expireDate === null) return -1;
-          return a.expireDate.getTime() - b.expireDate.getTime();
+        // Strict FIFO: find non-expired batches with stock and sort by receivedAt
+        const batches = await tx.stockBatch.findMany({
+          where: {
+            productId: product.id,
+            quantity: { gt: 0 },
+            OR: [{ expireDate: null }, { expireDate: { gte: startOfToday } }],
+          },
+          orderBy: [{ receivedAt: 'asc' }, { createdAt: 'asc' }],
         });
 
         const totalAvailable = batches.reduce((sum, batch) => sum + batch.quantity, 0);
@@ -76,7 +76,7 @@ export async function withdrawService(items: WithdrawItem[]): Promise<WithdrawRe
           );
         }
 
-        // Deduct batches (FEFO) and log WITHDRAW movements
+        // Deduct batches (strict FIFO) and log WITHDRAW movements
         let remainingQuantity = item.quantity;
         const batchDeductions: StockOutBatchDeduction[] = [];
 

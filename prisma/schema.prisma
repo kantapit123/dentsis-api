@@ -55,6 +55,7 @@ model StockBatch {
   productId  String
   lotNumber  String    // Lot/batch identifier (may be duplicated across products)
   expireDate DateTime? // Expiration date for FEFO sorting (nullable for products without expiration)
+  receivedAt DateTime  @default(now()) // Received timestamp used for strict FIFO deduction order
   quantity   Int       // Current quantity in this batch (ONLY place quantity is stored)
   createdAt  DateTime  @default(now())
 
@@ -67,6 +68,8 @@ model StockBatch {
   @@index([lotNumber])
   @@index([productId])
   @@index([productId, expireDate]) // Optimized index for FEFO queries (sorted by expireDate)
+  @@index([productId, receivedAt]) // Optimized index for FIFO queries (sorted by receivedAt)
+  @@unique([productId, lotNumber, expireDate])
   @@map("stock_batches")
 }
 

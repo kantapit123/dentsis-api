@@ -145,7 +145,7 @@ export async function stockOutHandler(req: Request, res: Response): Promise<void
  * Retrieves stock movement logs grouped by sessionId
  * 
  * Query parameters:
- * - type: IN | OUT (optional)
+ * - type: IN | OUT | WITHDRAW | DEPLETE (optional)
  * - fromDate: YYYY-MM-DD (optional)
  * - toDate: YYYY-MM-DD (optional)
  * - filter: today | 7days (optional, predefined date filters)
@@ -153,15 +153,15 @@ export async function stockOutHandler(req: Request, res: Response): Promise<void
 export async function stockLogsHandler(req: Request, res: Response): Promise<void> {
   try {
     // Extract query parameters
-    const type = req.query.type as 'IN' | 'OUT' | undefined;
+    const type = req.query.type as 'IN' | 'OUT' | 'WITHDRAW' | 'DEPLETE' | undefined;
     const fromDate = req.query.fromDate as string | undefined;
     const toDate = req.query.toDate as string | undefined;
     const filter = req.query.filter as 'today' | '7days' | undefined;
 
     // Validate type if provided
-    if (type && type !== 'IN' && type !== 'OUT') {
+    if (type && type !== 'IN' && type !== 'OUT' && type !== 'WITHDRAW' && type !== 'DEPLETE') {
       res.status(400).json({
-        error: 'Invalid request: type must be IN or OUT',
+        error: 'Invalid request: type must be IN, OUT, WITHDRAW, or DEPLETE',
       });
       return;
     }
@@ -197,7 +197,7 @@ export async function stockLogsHandler(req: Request, res: Response): Promise<voi
 
     // Build filters object
     const filters: {
-      type?: 'IN' | 'OUT';
+      type?: 'IN' | 'OUT' | 'WITHDRAW' | 'DEPLETE';
       fromDate?: string;
       toDate?: string;
       filter?: 'today' | '7days';

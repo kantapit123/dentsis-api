@@ -35,7 +35,8 @@ const mockBatches = [
     id: 'batch-1',
     productId: 'product-1',
     lotNumber: 'LOT001',
-    expireDate: new Date('2025-06-30'),
+    expireDate: new Date('2026-06-30'),
+    receivedAt: new Date('2025-01-01T00:00:00.000Z'),
     quantity: 5,
     createdAt: new Date(),
   },
@@ -43,7 +44,8 @@ const mockBatches = [
     id: 'batch-2',
     productId: 'product-1',
     lotNumber: 'LOT002',
-    expireDate: new Date('2026-12-31'),
+    expireDate: new Date('2025-01-31'), // earlier expiry, but received later
+    receivedAt: new Date('2025-02-01T00:00:00.000Z'),
     quantity: 3,
     createdAt: new Date(),
   },
@@ -83,7 +85,7 @@ describe('withdrawService', () => {
       );
     });
 
-    it('should apply FEFO: deduct from batch with earliest expiry first', async () => {
+    it('should apply strict FIFO: deduct from earliest received batch first', async () => {
       const updatedProduct = { ...mockReusableProduct, inUseQuantity: 6 };
 
       (prisma.product.findUnique as jest.Mock).mockResolvedValue(mockReusableProduct);
@@ -97,11 +99,19 @@ describe('withdrawService', () => {
 
       expect(result.results[0].success).toBe(true);
       expect(result.results[0].batches).toHaveLength(2);
-      // batch-1 (earliest expiry) should be deducted first
+      // batch-1 (earliest received) should be deducted first
       expect(result.results[0].batches[0].batchId).toBe('batch-1');
       expect(result.results[0].batches[0].quantity).toBe(5);
       expect(result.results[0].batches[1].batchId).toBe('batch-2');
       expect(result.results[0].batches[1].quantity).toBe(1);
+      expect(prisma.stockBatch.findMany).toHaveBeenCalledWith({
+        where: {
+          productId: 'product-1',
+          quantity: { gt: 0 },
+          OR: [{ expireDate: null }, { expireDate: { gte: expect.any(Date) } }],
+        },
+        orderBy: [{ receivedAt: 'asc' }, { createdAt: 'asc' }],
+      });
     });
   });
 

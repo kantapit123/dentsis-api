@@ -7,7 +7,7 @@ import { DashboardSummary } from '../types/dashboard.types';
  * - totalProducts: Total number of products
  * - totalStockQuantity: Sum of all batch quantities
  * - lowStockCount: Products where totalQuantity < minStock
- * - nearExpiryCount: Products with at least one batch expiring within 30 days
+ * - nearExpiryCount: Products with at least one active batch expiring in less than 6 months
  * - expiredCount: Products with at least one batch that has expired
  * 
  * @returns DashboardSummary with calculated statistics
@@ -36,30 +36,33 @@ export async function dashboardService(): Promise<DashboardSummary> {
   });
 
   // Calculate low stock count
-  // A product is low stock if totalQuantity > 0 AND totalQuantity <= minStock
+  // A product is low stock if totalQuantity <= minStock
   const lowStockCount = products.filter((product) => {
     const totalQuantity = product.stockBatches.reduce(
       (sum, batch) => sum + batch.quantity,
       0
     );
-    return totalQuantity > 0 && totalQuantity <= product.minStock;
+    return totalQuantity <= product.minStock;
   }).length;
 
   // Calculate near expiry count
-  // Get all batches that expire within 30 days
+  // Get all active batches that expire in less than 6 months
   const today = new Date();
-  const thirtyDaysFromNow = new Date(today);
-  thirtyDaysFromNow.setDate(today.getDate() + 30);
+  const sixMonthsFromNow = new Date(today);
+  sixMonthsFromNow.setMonth(today.getMonth() + 6);
 
   // Set time to start of day for accurate day-based comparison
   today.setHours(0, 0, 0, 0);
-  thirtyDaysFromNow.setHours(23, 59, 59, 999);
+  sixMonthsFromNow.setHours(0, 0, 0, 0);
 
   const nearExpiryBatches = await prisma.stockBatch.findMany({
     where: {
+      quantity: {
+        gt: 0,
+      },
       expireDate: {
         gte: today,
-        lte: thirtyDaysFromNow,
+        lt: sixMonthsFromNow,
       },
     },
     select: {

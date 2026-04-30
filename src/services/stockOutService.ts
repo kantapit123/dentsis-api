@@ -8,12 +8,13 @@ import {
 } from '../types/stock.types';
 
 /**
- * Processes stock-out operations with automatic FEFO (First Expired, First Out) handling
+ * Processes stock-out operations with strict FIFO handling
  * Uses a database transaction to ensure atomicity
  * 
- * FEFO Algorithm:
+ * FIFO Algorithm:
  * 1. Find all batches for the product with quantity > 0
- * 2. Order by expireDate ascending (oldest expiration first)
+ * 2. Exclude expired batches
+ * 3. Order by receivedAt ascending (oldest received first)
  * 3. Deduct quantity across batches until requested quantity is satisfied
  * 4. Throw error if total available stock is insufficient
  * 
@@ -63,24 +64,17 @@ export async function stockOutService(items: StockOutItem[]): Promise<StockOutRe
           continue;
         }
 
-        // Find all batches with available stock, ordered by expireDate (FEFO)
-        // Null expireDate batches are treated as having no expiration (sorted last)
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        // Find all non-expired batches with available stock, ordered by receivedAt (strict FIFO)
         const batches = await tx.stockBatch.findMany({
           where: {
             productId: product.id,
             quantity: { gt: 0 },
+            OR: [{ expireDate: null }, { expireDate: { gte: startOfToday } }],
           },
-          orderBy: {
-            expireDate: 'asc', // First Expired, First Out (nulls will be sorted last by default in PostgreSQL)
-          },
-        });
-
-        // Sort batches: those with expireDate first (FEFO), then those without expireDate
-        batches.sort((a, b) => {
-          if (a.expireDate === null && b.expireDate === null) return 0;
-          if (a.expireDate === null) return 1; // nulls last
-          if (b.expireDate === null) return -1; // nulls last
-          return a.expireDate.getTime() - b.expireDate.getTime();
+          orderBy: [{ receivedAt: 'asc' }, { createdAt: 'asc' }],
         });
 
         // Calculate total available stock
@@ -93,7 +87,7 @@ export async function stockOutService(items: StockOutItem[]): Promise<StockOutRe
           );
         }
 
-        // Deduct quantity across batches using FEFO algorithm
+        // Deduct quantity across batches using strict FIFO algorithm
         let remainingQuantity = item.quantity;
         const batchDeductions: StockOutBatchDeduction[] = [];
 

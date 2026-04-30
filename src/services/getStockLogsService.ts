@@ -1,5 +1,5 @@
 import { prisma } from '../prisma';
-import { StockLogResponseEntry, StockLogFilters } from '../types/stock.types';
+import { StockLogResponseEntry, StockLogFilters, StockMovementLogType } from '../types/stock.types';
 
 /**
  * Retrieves stock movement logs grouped by sessionId
@@ -10,7 +10,7 @@ import { StockLogResponseEntry, StockLogFilters } from '../types/stock.types';
  * 
  * Each group shows:
  * - sessionId (can be null)
- * - type (IN/OUT)
+ * - type (IN/OUT/WITHDRAW/DEPLETE)
  * - createdAt (ISO date string)
  * - productName
  * - totalQuantity (sum of all movements in group)
@@ -129,7 +129,7 @@ export async function getStockLogsService(
       // Create new group
       groupedMap.set(groupKey, {
         sessionId: movement.sessionId,
-        type: movement.type as 'IN' | 'OUT',
+        type: movement.type as StockMovementLogType,
         createdAt: movement.createdAt.toISOString(),
         productName: movement.product.name,
         totalQuantity: movement.quantity,

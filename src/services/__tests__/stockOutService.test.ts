@@ -24,14 +24,15 @@ describe('stockOutService', () => {
     jest.clearAllMocks();
   });
 
-  describe('FEFO algorithm - single batch sufficient', () => {
-    it('should deduct from oldest batch when single batch has enough stock', async () => {
+  describe('Strict FIFO algorithm - single batch sufficient', () => {
+    it('should deduct from earliest received batch when single batch has enough stock', async () => {
       const mockProduct = {
         id: 'product-1',
         name: 'Test Product',
         barcode: '123456',
         unit: 'box',
         minStock: 10,
+        isReusable: false,
         createdAt: new Date(),
       };
 
@@ -40,7 +41,8 @@ describe('stockOutService', () => {
           id: 'batch-1',
           productId: 'product-1',
           lotNumber: 'LOT001',
-          expireDate: new Date('2025-01-31'), // Oldest
+          expireDate: new Date('2025-12-31'),
+          receivedAt: new Date('2025-01-10T00:00:00.000Z'), // Earliest received
           quantity: 100,
           createdAt: new Date(),
         },
@@ -48,7 +50,8 @@ describe('stockOutService', () => {
           id: 'batch-2',
           productId: 'product-1',
           lotNumber: 'LOT002',
-          expireDate: new Date('2025-12-31'), // Newer
+          expireDate: new Date('2025-01-31'), // Earlier expiry but later received
+          receivedAt: new Date('2025-02-10T00:00:00.000Z'),
           quantity: 50,
           createdAt: new Date(),
         },
@@ -87,15 +90,17 @@ describe('stockOutService', () => {
       expect(result.results[0].batches[0].batchId).toBe('batch-1');
       expect(result.results[0].batches[0].quantity).toBe(30);
 
-      // Verify FEFO: should query batches ordered by expireDate ASC
+      // Verify strict FIFO query
       expect(prisma.stockBatch.findMany).toHaveBeenCalledWith({
         where: {
           productId: 'product-1',
           quantity: { gt: 0 },
+          OR: [
+            { expireDate: null },
+            { expireDate: { gte: expect.any(Date) } },
+          ],
         },
-        orderBy: {
-          expireDate: 'asc',
-        },
+        orderBy: [{ receivedAt: 'asc' }, { createdAt: 'asc' }],
       });
 
       // Should only update the first batch
@@ -120,14 +125,15 @@ describe('stockOutService', () => {
     });
   });
 
-  describe('FEFO algorithm - multiple batches needed', () => {
-    it('should deduct across multiple batches in FEFO order', async () => {
+  describe('Strict FIFO algorithm - multiple batches needed', () => {
+    it('should deduct across multiple batches in FIFO order', async () => {
       const mockProduct = {
         id: 'product-1',
         name: 'Test Product',
         barcode: '123456',
         unit: 'box',
         minStock: 10,
+        isReusable: false,
         createdAt: new Date(),
       };
 
@@ -136,7 +142,8 @@ describe('stockOutService', () => {
           id: 'batch-1',
           productId: 'product-1',
           lotNumber: 'LOT001',
-          expireDate: new Date('2025-01-31'), // Oldest
+          expireDate: new Date('2025-12-31'),
+          receivedAt: new Date('2025-01-01T00:00:00.000Z'),
           quantity: 20, // Not enough
           createdAt: new Date(),
         },
@@ -144,7 +151,8 @@ describe('stockOutService', () => {
           id: 'batch-2',
           productId: 'product-1',
           lotNumber: 'LOT002',
-          expireDate: new Date('2025-06-30'), // Middle
+          expireDate: new Date('2025-01-31'), // Earlier expiry but received later
+          receivedAt: new Date('2025-02-01T00:00:00.000Z'),
           quantity: 30, // Still not enough
           createdAt: new Date(),
         },
@@ -152,7 +160,8 @@ describe('stockOutService', () => {
           id: 'batch-3',
           productId: 'product-1',
           lotNumber: 'LOT003',
-          expireDate: new Date('2025-12-31'), // Newest
+          expireDate: new Date('2026-12-31'),
+          receivedAt: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 50,
           createdAt: new Date(),
         },
@@ -192,7 +201,7 @@ describe('stockOutService', () => {
       expect(result.results[0].batches[1].batchId).toBe('batch-2');
       expect(result.results[0].batches[1].quantity).toBe(20);
 
-      // Should update both batches
+      // Should update batches in received order
       expect(prisma.stockBatch.update).toHaveBeenCalledTimes(2);
       expect(prisma.stockBatch.update).toHaveBeenNthCalledWith(1, {
         where: { id: 'batch-1' },
@@ -208,6 +217,54 @@ describe('stockOutService', () => {
     });
   });
 
+  describe('expired batches', () => {
+    it('should skip expired batches and only use non-expired stock', async () => {
+      const mockProduct = {
+        id: 'product-1',
+        name: 'Test Product',
+        barcode: '123456',
+        unit: 'box',
+        minStock: 10,
+        isReusable: false,
+        createdAt: new Date(),
+      };
+
+      const mockBatches = [
+        {
+          id: 'batch-fresh',
+          productId: 'product-1',
+          lotNumber: 'LOT-FRESH',
+          expireDate: new Date('2999-12-31'),
+          receivedAt: new Date('2025-01-01T00:00:00.000Z'),
+          quantity: 12,
+          createdAt: new Date(),
+        },
+      ];
+
+      (prisma.product.findUnique as jest.Mock).mockResolvedValue(mockProduct);
+      (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue(mockBatches);
+      (prisma.stockBatch.update as jest.Mock).mockResolvedValue({ ...mockBatches[0], quantity: 2 });
+      (prisma.stockMovement.create as jest.Mock).mockResolvedValue({ id: 'movement-1' });
+
+      (prisma.$transaction as jest.Mock).mockImplementation(async (callback) => callback(prisma));
+
+      const items: StockOutItem[] = [{ barcode: '123456', quantity: 10 }];
+      const result = await stockOutService(items);
+
+      expect(result.results[0].success).toBe(true);
+      expect(result.results[0].batches).toEqual([
+        { batchId: 'batch-fresh', lotNumber: 'LOT-FRESH', quantity: 10 },
+      ]);
+      expect(prisma.stockBatch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [{ expireDate: null }, { expireDate: { gte: expect.any(Date) } }],
+          }),
+        })
+      );
+    });
+  });
+
   describe('insufficient stock', () => {
     it('should throw error when total available stock is insufficient', async () => {
       const mockProduct = {
@@ -216,6 +273,7 @@ describe('stockOutService', () => {
         barcode: '123456',
         unit: 'box',
         minStock: 10,
+        isReusable: false,
         createdAt: new Date(),
       };
 
@@ -225,6 +283,7 @@ describe('stockOutService', () => {
           productId: 'product-1',
           lotNumber: 'LOT001',
           expireDate: new Date('2025-01-31'),
+          receivedAt: new Date('2025-01-01T00:00:00.000Z'),
           quantity: 20,
           createdAt: new Date(),
         },
@@ -233,6 +292,7 @@ describe('stockOutService', () => {
           productId: 'product-1',
           lotNumber: 'LOT002',
           expireDate: new Date('2025-12-31'),
+          receivedAt: new Date('2025-02-01T00:00:00.000Z'),
           quantity: 10,
           createdAt: new Date(),
         },
@@ -294,6 +354,7 @@ describe('stockOutService', () => {
         barcode: '123456',
         unit: 'box',
         minStock: 10,
+        isReusable: false,
         createdAt: new Date(),
       };
 
@@ -325,6 +386,7 @@ describe('stockOutService', () => {
         barcode: '123456',
         unit: 'box',
         minStock: 10,
+        isReusable: false,
         createdAt: new Date(),
       };
 
@@ -334,6 +396,7 @@ describe('stockOutService', () => {
         barcode: '789012',
         unit: 'unit',
         minStock: 5,
+        isReusable: false,
         createdAt: new Date(),
       };
 
@@ -343,6 +406,7 @@ describe('stockOutService', () => {
           productId: 'product-1',
           lotNumber: 'LOT001',
           expireDate: new Date('2025-01-31'),
+          receivedAt: new Date('2025-01-01T00:00:00.000Z'),
           quantity: 100,
           createdAt: new Date(),
         },
@@ -354,6 +418,7 @@ describe('stockOutService', () => {
           productId: 'product-2',
           lotNumber: 'LOT002',
           expireDate: new Date('2025-06-30'),
+          receivedAt: new Date('2025-01-01T00:00:00.000Z'),
           quantity: 50,
           createdAt: new Date(),
         },

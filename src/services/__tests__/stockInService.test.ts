@@ -50,6 +50,7 @@ describe('stockInService', () => {
         productId: 'product-1',
         lotNumber: 'LOT001',
         expireDate: new Date('2025-12-31'),
+        receivedAt: new Date(),
         quantity: 50,
         createdAt: new Date(),
       };
@@ -88,6 +89,7 @@ describe('stockInService', () => {
         where: {
           productId: 'product-1',
           lotNumber: 'LOT001',
+          expireDate: new Date('2025-12-31'),
         },
       });
       expect(prisma.stockBatch.create).toHaveBeenCalledWith({
@@ -95,6 +97,7 @@ describe('stockInService', () => {
           productId: 'product-1',
           lotNumber: 'LOT001',
           expireDate: new Date('2025-12-31'),
+          receivedAt: expect.any(Date),
           quantity: 50,
         },
       });
@@ -118,6 +121,7 @@ describe('stockInService', () => {
         productId: 'product-1',
         lotNumber: 'LOT001',
         expireDate: new Date('2025-12-31'),
+        receivedAt: new Date(),
         quantity: 30,
         createdAt: new Date(),
       };

@@ -25,6 +25,26 @@ export interface ProductListItem {
   nearExpiry: boolean;
   expireDate: string | null; // ISO date string of earliest expiring batch, or null if no expiration
   isExpired: boolean; // true if any batch has expired
+  batchSummary?: ProductBatchSummary;
+  batches?: ProductBatchDetail[];
+}
+
+export type ProductBatchStatus = 'DEPLETED' | 'EXPIRED' | 'NEAR_EXPIRY' | 'ACTIVE' | 'NO_EXPIRY';
+
+export interface ProductBatchSummary {
+  totalBatches: number;
+  activeBatches: number;
+  expiredBatches: number;
+  depletedBatches: number;
+}
+
+export interface ProductBatchDetail {
+  batchId: string;
+  lotNumber: string;
+  receivedAt: string;
+  expireDate: string | null;
+  quantity: number;
+  status: ProductBatchStatus;
 }
 
 /**

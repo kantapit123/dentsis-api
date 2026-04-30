@@ -14,7 +14,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
   const sessionId = randomUUID();
 
   // Process all items within a single transaction
-  const results = await prisma.$transaction(async () => {
+  const results = await prisma.$transaction(async (tx) => {
     const itemResults: StockInItemResult[] = [];
 
     for (const item of items) {
@@ -25,7 +25,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
           : `AUTO-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
         // Resolve product by barcode
-        const product = await prisma.product.findUnique({
+        const product = await tx.product.findUnique({
           where: { barcode: item.barcode },
         });
 
@@ -42,11 +42,17 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
           continue;
         }
 
-        // Check if batch already exists for this product + lot combination
-        const existingBatch = await prisma.stockBatch.findFirst({
+        const parsedExpireDate =
+          item.expireDate !== null && item.expireDate !== undefined && item.expireDate !== ''
+            ? new Date(item.expireDate)
+            : null;
+
+        // Check if batch already exists for this product + lot + expiry combination
+        const existingBatch = await tx.stockBatch.findFirst({
           where: {
             productId: product.id,
             lotNumber: effectiveLotNumber,
+            expireDate: parsedExpireDate,
           },
         });
 
@@ -54,7 +60,7 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
 
         if (existingBatch) {
           // Update existing batch quantity
-          const updatedBatch = await prisma.stockBatch.update({
+          const updatedBatch = await tx.stockBatch.update({
             where: { id: existingBatch.id },
             data: {
               quantity: {
@@ -69,29 +75,25 @@ export async function stockInService(items: StockInItem[]): Promise<StockInRespo
             productId: string;
             lotNumber: string;
             quantity: number;
+            receivedAt: Date;
             expireDate?: Date | null;
           } = {
             productId: product.id,
             lotNumber: effectiveLotNumber,
             quantity: item.quantity,
+            receivedAt: new Date(),
           };
 
-          // Only set expireDate if provided (can be null or empty string)
-          // Treat empty string as null
-          if (item.expireDate !== null && item.expireDate !== undefined && item.expireDate !== '') {
-            createData.expireDate = new Date(item.expireDate);
-          } else {
-            createData.expireDate = null;
-          }
+          createData.expireDate = parsedExpireDate;
 
-          const newBatch = await prisma.stockBatch.create({
+          const newBatch = await tx.stockBatch.create({
             data: createData as any, // Type assertion needed until Prisma client is regenerated
           });
           batchId = newBatch.id;
         }
 
         // Create movement record for audit trail
-        await prisma.stockMovement.create({
+        await tx.stockMovement.create({
           data: {
             productId: product.id,
             batchId: batchId,

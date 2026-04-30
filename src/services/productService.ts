@@ -1,11 +1,60 @@
 import { prisma } from '../prisma';
-import { ProductListItem, PaginatedProductListResponse, ProductListQuery } from '../types/dashboard.types';
+import {
+    ProductBatchDetail,
+    ProductBatchStatus,
+    ProductListItem,
+    PaginatedProductListResponse,
+    ProductListQuery,
+} from '../types/dashboard.types';
+
+const NEAR_EXPIRY_THRESHOLD_MONTHS = 6;
+
+function parseExpireDate(value: Date | string | number | null | undefined): Date | null {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function startOfDay(date: Date): Date {
+    const cloned = new Date(date);
+    cloned.setHours(0, 0, 0, 0);
+    return cloned;
+}
+
+function endOfDay(date: Date): Date {
+    const cloned = new Date(date);
+    cloned.setHours(23, 59, 59, 999);
+    return cloned;
+}
+
+function addMonths(date: Date, months: number): Date {
+    const cloned = new Date(date);
+    cloned.setMonth(cloned.getMonth() + months);
+    return cloned;
+}
+
+function classifyBatchStatus(
+    quantity: number,
+    expireDate: Date | null,
+    today: Date,
+    nearExpiryCutoff: Date
+): ProductBatchStatus {
+    if (quantity === 0) return 'DEPLETED';
+    if (expireDate === null) return 'NO_EXPIRY';
+
+    const normalizedExpireDate = new Date(expireDate);
+    normalizedExpireDate.setHours(0, 0, 0, 0);
+
+    if (normalizedExpireDate < today) return 'EXPIRED';
+    if (normalizedExpireDate < nearExpiryCutoff) return 'NEAR_EXPIRY';
+    return 'ACTIVE';
+}
 
 /**
  * Retrieves product list with stock information
  * 
  * - totalQuantity: Sum of all batches per product
- * - nearExpiry: true if any batch expires within 30 days
+ * - nearExpiry: true if any batch expires in less than 6 months
  * - Ordered by name ASC
  * - Supports search by product name or barcode
  * - Supports pagination
@@ -56,14 +105,10 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
         },
     });
 
-    // Calculate today and 30 days from now for expiry check
-    const today = new Date();
-    const thirtyDaysFromNow = new Date(today);
-    thirtyDaysFromNow.setDate(today.getDate() + 30);
-
-    // Set time to start/end of day for accurate day-based comparison
-    today.setHours(0, 0, 0, 0);
-    thirtyDaysFromNow.setHours(23, 59, 59, 999);
+    // Calculate today and six months cutoff for expiry check
+    const now = new Date();
+    const today = startOfDay(now);
+    const nearExpiryCutoff = startOfDay(addMonths(today, NEAR_EXPIRY_THRESHOLD_MONTHS));
 
     // Transform products to include calculated fields
     let data = allProducts.map((product) => {
@@ -73,29 +118,19 @@ export async function getProductList(query?: ProductListQuery): Promise<Paginate
             0
         );
 
-        // Check if any batch expires within 30 days, handling null/invalid expireDate
-        const nearExpiry = product.stockBatches.some((batch) => {
-            if (!batch.expireDate) return false;
-            const expireDateObj = typeof batch.expireDate === 'string' || typeof batch.expireDate === 'number'
-                ? new Date(batch.expireDate)
-                : batch.expireDate; // If already Date object
-
-            if (!(expireDateObj instanceof Date) || isNaN(expireDateObj.getTime())) return false;
-            expireDateObj.setHours(0, 0, 0, 0);
-            return expireDateObj >= today && expireDateObj <= thirtyDaysFromNow;
-        });
-
-        // Find earliest expireDate from all batches (for products with expiration)
+        // Find valid expire dates from all batches (for products with expiration)
         const validExpireDates = product.stockBatches
-            .map((batch) => {
-                if (!batch.expireDate) return null;
-                const expireDateObj = typeof batch.expireDate === 'string' || typeof batch.expireDate === 'number'
-                    ? new Date(batch.expireDate)
-                    : batch.expireDate;
-                if (!(expireDateObj instanceof Date) || isNaN(expireDateObj.getTime())) return null;
-                return expireDateObj;
-            })
+            .map((batch) => parseExpireDate(batch.expireDate))
             .filter((date): date is Date => date !== null);
+
+        // Near expiry must be based on non-depleted batches only
+        const nearExpiry = product.stockBatches.some((batch) => {
+            if (batch.quantity <= 0) return false;
+            const expireDateObj = parseExpireDate(batch.expireDate);
+            if (!expireDateObj) return false;
+            const normalizedExpireDate = startOfDay(expireDateObj);
+            return normalizedExpireDate >= today && normalizedExpireDate < nearExpiryCutoff;
+        });
 
         const expireDate = validExpireDates.length > 0
             ? new Date(Math.min(...validExpireDates.map(d => d.getTime()))).toISOString()
@@ -181,8 +216,11 @@ export async function findProductById(productId: string): Promise<ProductListIte
         include: {
             stockBatches: {
                 select: {
+                    id: true,
+                    lotNumber: true,
                     quantity: true,
                     expireDate: true,
+                    receivedAt: true,
                 },
             },
         },
@@ -191,12 +229,9 @@ export async function findProductById(productId: string): Promise<ProductListIte
         throw new Error('Product not found please add the product first');
     }
 
-    const today = new Date();
-    const thirtyDaysFromNow = new Date(today);
-    thirtyDaysFromNow.setDate(today.getDate() + 30);
-
-    today.setHours(0, 0, 0, 0);
-    thirtyDaysFromNow.setHours(23, 59, 59, 999);
+    const now = new Date();
+    const today = startOfDay(now);
+    const nearExpiryCutoff = startOfDay(addMonths(today, NEAR_EXPIRY_THRESHOLD_MONTHS));
 
 
     const totalQuantity = product.stockBatches.reduce(
@@ -205,26 +240,16 @@ export async function findProductById(productId: string): Promise<ProductListIte
     );
 
     const nearExpiry = product.stockBatches.some((batch) => {
-        if (!batch.expireDate) return false;
-        const expireDateObj = typeof batch.expireDate === 'string' || typeof batch.expireDate === 'number'
-            ? new Date(batch.expireDate)
-            : batch.expireDate; // If already Date object
-
-        if (!(expireDateObj instanceof Date) || isNaN(expireDateObj.getTime())) return false;
-        expireDateObj.setHours(0, 0, 0, 0);
-        return expireDateObj >= today && expireDateObj <= thirtyDaysFromNow;
+        if (batch.quantity <= 0) return false;
+        const expireDateObj = parseExpireDate(batch.expireDate);
+        if (!expireDateObj) return false;
+        const normalizedExpireDate = startOfDay(expireDateObj);
+        return normalizedExpireDate >= today && normalizedExpireDate < nearExpiryCutoff;
     });
 
     // Find earliest expireDate from all batches (for products with expiration)
     const validExpireDates = product.stockBatches
-        .map((batch) => {
-            if (!batch.expireDate) return null;
-            const expireDateObj = typeof batch.expireDate === 'string' || typeof batch.expireDate === 'number'
-                ? new Date(batch.expireDate)
-                : batch.expireDate;
-            if (!(expireDateObj instanceof Date) || isNaN(expireDateObj.getTime())) return null;
-            return expireDateObj;
-        })
+        .map((batch) => parseExpireDate(batch.expireDate))
         .filter((date): date is Date => date !== null);
 
     const expireDate = validExpireDates.length > 0
@@ -243,6 +268,46 @@ export async function findProductById(productId: string): Promise<ProductListIte
         ? warehouseQuantity + product.inUseQuantity
         : warehouseQuantity;
 
+    const batches: ProductBatchDetail[] = product.stockBatches
+        .map((batch) => {
+            const parsedExpireDate = batch.expireDate
+                ? new Date(batch.expireDate)
+                : null;
+
+            return {
+                batchId: batch.id,
+                lotNumber: batch.lotNumber,
+                receivedAt: batch.receivedAt.toISOString(),
+                expireDate: parsedExpireDate ? parsedExpireDate.toISOString() : null,
+                quantity: batch.quantity,
+                status: classifyBatchStatus(batch.quantity, parsedExpireDate, today, nearExpiryCutoff),
+            };
+        })
+        .sort(
+            (a, b) =>
+                new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime()
+        );
+
+    const batchSummary = batches.reduce(
+        (summary, batch) => {
+            summary.totalBatches += 1;
+            if (batch.status === 'DEPLETED') {
+                summary.depletedBatches += 1;
+            } else if (batch.status === 'EXPIRED') {
+                summary.expiredBatches += 1;
+            } else {
+                summary.activeBatches += 1;
+            }
+            return summary;
+        },
+        {
+            totalBatches: 0,
+            activeBatches: 0,
+            expiredBatches: 0,
+            depletedBatches: 0,
+        }
+    );
+
     return {
         id: product.id,
         name: product.name,
@@ -256,6 +321,8 @@ export async function findProductById(productId: string): Promise<ProductListIte
         nearExpiry,
         expireDate,
         isExpired,
+        batchSummary,
+        batches,
     };
 }
 

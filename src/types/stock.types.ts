@@ -1,3 +1,5 @@
+export type StockMovementLogType = 'IN' | 'OUT' | 'WITHDRAW' | 'DEPLETE';
+
 /**
  * Stock-in request item
  */
@@ -96,7 +98,7 @@ export interface StockLogEntry {
   sessionId: string | null;
   productName: string;
   productId: string;
-  type: 'IN' | 'OUT';
+  type: StockMovementLogType;
   timestamp: Date;
   totalQuantity: number;
   lots: StockLogLotBreakdown[];
@@ -115,7 +117,7 @@ export interface StockLogsResponse {
  */
 export interface StockLogResponseEntry {
   sessionId: string | null;
-  type: 'IN' | 'OUT';
+  type: StockMovementLogType;
   createdAt: string; // ISO date string
   productName: string;
   totalQuantity: number;
@@ -129,7 +131,7 @@ export interface StockLogResponseEntry {
  * Query filters for stock logs
  */
 export interface StockLogFilters {
-  type?: 'IN' | 'OUT';
+  type?: StockMovementLogType;
   fromDate?: string; // YYYY-MM-DD
   toDate?: string; // YYYY-MM-DD
   filter?: 'today' | '7days'; // Predefined date filters

@@ -64,13 +64,13 @@ describe('productListService', () => {
       });
     });
 
-    it('should set nearExpiry to true if any batch expires within 30 days', async () => {
+    it('should set nearExpiry to true if any active batch expires in less than 6 months', async () => {
       const today = new Date();
-      const within30Days = new Date(today);
-      within30Days.setDate(today.getDate() + 20); // 20 days from now
+      const within6Months = new Date(today);
+      within6Months.setDate(today.getDate() + 120);
 
-      const beyond30Days = new Date(today);
-      beyond30Days.setDate(today.getDate() + 45); // 45 days from now
+      const beyond6Months = new Date(today);
+      beyond6Months.setDate(today.getDate() + 220);
 
       const mockProducts = [
         {
@@ -80,8 +80,8 @@ describe('productListService', () => {
           unit: 'box',
           minStock: 100,
           stockBatches: [
-            { quantity: 50, expireDate: within30Days }, // Near expiry
-            { quantity: 30, expireDate: beyond30Days },
+            { quantity: 50, expireDate: within6Months }, // Near expiry
+            { quantity: 30, expireDate: beyond6Months },
           ],
         },
         {
@@ -91,7 +91,7 @@ describe('productListService', () => {
           unit: 'unit',
           minStock: 50,
           stockBatches: [
-            { quantity: 60, expireDate: beyond30Days }, // Not near expiry
+            { quantity: 60, expireDate: beyond6Months }, // Not near expiry
           ],
         },
       ];
@@ -104,10 +104,10 @@ describe('productListService', () => {
       expect(result[1].nearExpiry).toBe(false);
     });
 
-    it('should set nearExpiry to false if no batches expire within 30 days', async () => {
+    it('should set nearExpiry to false if no active batches expire in less than 6 months', async () => {
       const today = new Date();
-      const beyond30Days = new Date(today);
-      beyond30Days.setDate(today.getDate() + 45);
+      const beyond6Months = new Date(today);
+      beyond6Months.setDate(today.getDate() + 220);
 
       const mockProducts = [
         {
@@ -117,7 +117,7 @@ describe('productListService', () => {
           unit: 'box',
           minStock: 100,
           stockBatches: [
-            { quantity: 50, expireDate: beyond30Days },
+            { quantity: 50, expireDate: beyond6Months },
           ],
         },
       ];
