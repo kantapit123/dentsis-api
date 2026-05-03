@@ -1,7 +1,0 @@
-```
-docker buildx build \
-  --platform linux/amd64 \
-  -t ghcr.io/kantapit123/dentsis-api:1.0.0 \
-  --push \
-  .
-```
