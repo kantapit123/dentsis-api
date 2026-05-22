@@ -121,6 +121,48 @@ enum PatientTitlePrefix {
   OTHER
 }
 
+// Auth models
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  role          UserRole       @default(STAFF)
+  tokenVersion  Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  refreshTokens RefreshToken[]
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  family    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([family])
+  @@map("refresh_tokens")
+}
+
+// Singleton lock — only one row can exist (id = 'done').
+// Bootstrap atomicity: CREATE fails with unique PK violation if bootstrap already ran.
+model BootstrapLock {
+  id        String   @id @default("done")
+  createdAt DateTime @default(now())
+  @@map("bootstrap_lock")
+}
+
 // Patient model represents a patient record in the clinic
 model Patient {
   id          String             @id @default(uuid())

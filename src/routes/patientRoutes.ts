@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { apiKeyGuard } from '../middlewares/apiKey.middleware';
+import { requireAuth } from '../middlewares/auth.middleware';
 import { createPatientHandler } from '../controllers/patientController';
 
 const router = Router();
 
-router.post('/', apiKeyGuard, createPatientHandler);
+router.post('/', requireAuth, createPatientHandler);
 
 export default router;

@@ -1,49 +1,17 @@
 import { Router } from 'express';
 import { createProduct, getStockById, stockInHandler, stockLogsHandler, stockOutHandler, withdrawHandler, depleteHandler, disposeHandler } from '../controllers/stockController';
-import { apiKeyGuard } from '../middlewares/apiKey.middleware';
+import { requireAuth, requireRole } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-/**
- * POST /api/stock/in
- * Stock-in endpoint for adding inventory
- */
-router.post('/in', apiKeyGuard, stockInHandler);
-
-/**
- * POST /api/stock/out
- * Stock-out endpoint with automatic FEFO handling
- */
-router.post('/out', apiKeyGuard, stockOutHandler);
-
-/**
- * GET /api/stock/logs
- * Retrieve stock movement logs grouped by sessionId
- */
-router.get('/logs', apiKeyGuard, stockLogsHandler);
-
-/**
- * POST /api/stock/withdraw
- * Withdraw reusable items: warehouse → in-use
- */
-router.post('/withdraw', apiKeyGuard, withdrawHandler);
-
-/**
- * POST /api/stock/deplete
- * Deplete reusable items: in-use → consumed
- */
-router.post('/deplete', apiKeyGuard, depleteHandler);
-
-/**
- * POST /api/stock/dispose
- * Dispose warehouse stock with an audit reason
- */
-router.post('/dispose', apiKeyGuard, disposeHandler);
-
-router.post('/create', apiKeyGuard, createProduct);
-
-router.get('/:stockId', apiKeyGuard, getStockById);
-
+router.post('/in', requireAuth, requireRole('ADMIN'), stockInHandler);
+router.post('/out', requireAuth, stockOutHandler);
+router.get('/logs', requireAuth, stockLogsHandler);
+router.post('/withdraw', requireAuth, withdrawHandler);
+router.post('/deplete', requireAuth, depleteHandler);
+router.post('/dispose', requireAuth, requireRole('ADMIN'), disposeHandler);
+router.post('/create', requireAuth, requireRole('ADMIN'), createProduct);
+router.get('/:stockId', requireAuth, getStockById);
 
 export default router;
 
