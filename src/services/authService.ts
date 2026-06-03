@@ -12,6 +12,8 @@ import {
   BootstrapRequest,
   LoginRequest,
   CreateUserRequest,
+  UpdateUserRequest,
+  ChangePasswordRequest,
   UserResponse,
 } from '../types/auth.types';
 import { UserRole } from '@prisma/client';
@@ -19,8 +21,28 @@ import { UserRole } from '@prisma/client';
 const BCRYPT_ROUNDS = 12;
 const REFRESH_GRACE_MS = 5_000;
 
-function toUserResponse(u: { id: string; email: string; name: string; role: UserRole }): UserResponse {
-  return { id: u.id, email: u.email, name: u.name, role: u.role };
+function toUserResponse(u: {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  doctorId: string | null;
+  active: boolean;
+}): UserResponse {
+  return { id: u.id, email: u.email, name: u.name, role: u.role, doctorId: u.doctorId, active: u.active };
+}
+
+// Enforces the User<->Doctor invariant:
+//  - role=DOCTOR  → doctorId required and must reference an active Doctor
+//  - role=ADMIN|STAFF → doctorId must be null
+async function assertValidDoctorLink(role: UserRole, doctorId: string | null | undefined): Promise<void> {
+  if (role === 'DOCTOR') {
+    if (!doctorId) throw new Error('DOCTOR_REQUIRED');
+    const doctor = await prisma.doctor.findUnique({ where: { id: doctorId } });
+    if (!doctor || !doctor.active) throw new Error('INACTIVE_DOCTOR');
+  } else if (doctorId) {
+    throw new Error('DOCTOR_NOT_ALLOWED');
+  }
 }
 
 export async function bootstrap(
@@ -74,6 +96,8 @@ export async function login(
 
   const match = await bcrypt.compare(data.password, user.passwordHash);
   if (!match) throw new Error('INVALID_CREDENTIALS');
+
+  if (!user.active) throw new Error('ACCOUNT_DISABLED');
 
   const rawRefresh = generateRefreshToken();
   const family = randomUUID();
@@ -199,6 +223,9 @@ export async function getMe(userId: string): Promise<UserResponse> {
 }
 
 export async function createUser(data: CreateUserRequest): Promise<UserResponse> {
+  const role = data.role ?? 'STAFF';
+  await assertValidDoctorLink(role, data.doctorId);
+
   const passwordHash = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
   try {
     const user = await prisma.user.create({
@@ -206,13 +233,80 @@ export async function createUser(data: CreateUserRequest): Promise<UserResponse>
         email: data.email,
         name: data.name,
         passwordHash,
-        role: data.role ?? 'STAFF',
+        role,
+        doctorId: role === 'DOCTOR' ? data.doctorId! : null,
       },
     });
     return toUserResponse(user);
   } catch (e: unknown) {
     const code = (e as { code?: string }).code;
-    if (code === 'P2002') throw new Error('EMAIL_TAKEN');
+    if (code === 'P2002') {
+      const target = (e as { meta?: { target?: string[] } }).meta?.target;
+      if (target?.includes('doctorId')) throw new Error('DOCTOR_ALREADY_LINKED');
+      throw new Error('EMAIL_TAKEN');
+    }
     throw e;
   }
+}
+
+export async function listUsers(): Promise<UserResponse[]> {
+  const users = await prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
+  return users.map(toUserResponse);
+}
+
+export async function updateUser(id: string, data: UpdateUserRequest): Promise<UserResponse> {
+  const existing = await prisma.user.findUnique({ where: { id } });
+  if (!existing) throw new Error('USER_NOT_FOUND');
+
+  const role = data.role ?? existing.role;
+  // Resolve target doctorId: explicit value wins, else keep existing; force null when not a DOCTOR.
+  let doctorId: string | null = data.doctorId !== undefined ? data.doctorId : existing.doctorId;
+  if (role !== 'DOCTOR') doctorId = null;
+  await assertValidDoctorLink(role, doctorId);
+
+  const updateData: Prisma.UserUncheckedUpdateInput = { role, doctorId };
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.active !== undefined) updateData.active = data.active;
+  if (data.password) updateData.passwordHash = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
+
+  // Force re-auth when security-relevant fields change: password reset, demotion/role change,
+  // or deactivation. The live tokenVersion check in requireAuth then rejects old access tokens.
+  const securityChange =
+    !!data.password || role !== existing.role || data.active === false;
+  if (securityChange) updateData.tokenVersion = { increment: 1 };
+
+  try {
+    const user = await prisma.user.update({ where: { id }, data: updateData });
+    return toUserResponse(user);
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    if (code === 'P2002') {
+      const target = (e as { meta?: { target?: string[] } }).meta?.target;
+      if (target?.includes('doctorId')) throw new Error('DOCTOR_ALREADY_LINKED');
+      throw new Error('EMAIL_TAKEN');
+    }
+    throw e;
+  }
+}
+
+export async function softDeleteUser(id: string): Promise<void> {
+  const existing = await prisma.user.findUnique({ where: { id } });
+  if (!existing) throw new Error('USER_NOT_FOUND');
+  await prisma.user.update({
+    where: { id },
+    data: { active: false, tokenVersion: { increment: 1 } },
+  });
+}
+
+export async function changePassword(userId: string, data: ChangePasswordRequest): Promise<void> {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const match = await bcrypt.compare(data.oldPassword, user.passwordHash);
+  if (!match) throw new Error('INVALID_PASSWORD');
+
+  const passwordHash = await bcrypt.hash(data.newPassword, BCRYPT_ROUNDS);
+  // Bump tokenVersion to invalidate other sessions; the caller refreshes for a new access token.
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash, tokenVersion: { increment: 1 } },
+  });
 }

@@ -1,0 +1,79 @@
+import { prisma } from '../prisma';
+
+export interface DoctorResponse {
+  id: string;
+  name: string;
+  nickname: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CreateDoctorInput {
+  name: string;
+  nickname?: string | null;
+}
+
+interface UpdateDoctorInput {
+  name?: string;
+  nickname?: string | null;
+  active?: boolean;
+}
+
+function toResponse(d: {
+  id: string;
+  name: string;
+  nickname: string | null;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}): DoctorResponse {
+  return {
+    id: d.id,
+    name: d.name,
+    nickname: d.nickname,
+    active: d.active,
+    createdAt: d.createdAt.toISOString(),
+    updatedAt: d.updatedAt.toISOString(),
+  };
+}
+
+export async function listDoctors(activeOnly: boolean): Promise<DoctorResponse[]> {
+  const doctors = await prisma.doctor.findMany({
+    where: activeOnly ? { active: true } : undefined,
+    orderBy: { name: 'asc' },
+  });
+  return doctors.map(toResponse);
+}
+
+export async function createDoctor(data: CreateDoctorInput): Promise<DoctorResponse> {
+  const name = data.name?.trim();
+  if (!name) throw new Error('INVALID_NAME');
+  const doctor = await prisma.doctor.create({
+    data: { name, nickname: data.nickname?.trim() || null },
+  });
+  return toResponse(doctor);
+}
+
+export async function updateDoctor(id: string, data: UpdateDoctorInput): Promise<DoctorResponse> {
+  const existing = await prisma.doctor.findUnique({ where: { id } });
+  if (!existing) throw new Error('DOCTOR_NOT_FOUND');
+
+  if (data.name !== undefined && !data.name.trim()) throw new Error('INVALID_NAME');
+
+  const doctor = await prisma.doctor.update({
+    where: { id },
+    data: {
+      ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+      ...(data.nickname !== undefined ? { nickname: data.nickname?.trim() || null } : {}),
+      ...(data.active !== undefined ? { active: data.active } : {}),
+    },
+  });
+  return toResponse(doctor);
+}
+
+export async function softDeleteDoctor(id: string): Promise<void> {
+  const existing = await prisma.doctor.findUnique({ where: { id } });
+  if (!existing) throw new Error('DOCTOR_NOT_FOUND');
+  await prisma.doctor.update({ where: { id }, data: { active: false } });
+}

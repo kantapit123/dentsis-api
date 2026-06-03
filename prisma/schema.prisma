@@ -34,15 +34,15 @@ model Product {
   id            String   @id @default(uuid())
   name          String
   barcode       String   @unique // Unique barcode identifier for the product
-  unit          String   // Unit of measurement (e.g., "box", "unit", "bottle")
-  minStock      Int      // Minimum stock level for alerts/reorder points
+  unit          String // Unit of measurement (e.g., "box", "unit", "bottle")
+  minStock      Int // Minimum stock level for alerts/reorder points
   isReusable    Boolean  @default(false) // true for items like chemicals/resins that can be used multiple times
   inUseQuantity Int      @default(0) // Quantity currently in use (for reusable items only)
   createdAt     DateTime @default(now())
 
   // Relations
-  stockBatches    StockBatch[]    @relation("ProductStockBatches")
-  stockMovements  StockMovement[] @relation("ProductStockMovements")
+  stockBatches   StockBatch[]    @relation("ProductStockBatches")
+  stockMovements StockMovement[] @relation("ProductStockMovements")
 
   // Index barcode for fast product lookups during stock operations
   @@index([barcode])
@@ -55,23 +55,23 @@ model Product {
 model StockBatch {
   id         String    @id @default(uuid())
   productId  String
-  lotNumber  String    // Lot/batch identifier (may be duplicated across products)
+  lotNumber  String // Lot/batch identifier (may be duplicated across products)
   expireDate DateTime? // Expiration date for FEFO sorting (nullable for products without expiration)
   receivedAt DateTime  @default(now()) // Received timestamp used for strict FIFO deduction order
-  quantity   Int       // Current quantity in this batch (ONLY place quantity is stored)
+  quantity   Int // Current quantity in this batch (ONLY place quantity is stored)
   createdAt  DateTime  @default(now())
 
   // Relations
   product        Product         @relation("ProductStockBatches", fields: [productId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[] @relation("BatchStockMovements")
 
+  @@unique([productId, lotNumber, expireDate])
   // Compound index on lotNumber for fast lot-based queries
   // Index on productId for efficient product-batch lookups
   @@index([lotNumber])
   @@index([productId])
   @@index([productId, expireDate]) // Optimized index for FEFO queries (sorted by expireDate)
   @@index([productId, receivedAt]) // Optimized index for FIFO queries (sorted by receivedAt)
-  @@unique([productId, lotNumber, expireDate])
   @@map("stock_batches")
 }
 
@@ -80,15 +80,15 @@ model StockBatch {
 // IMPORTANT: Always references a specific batch (lot) - no aggregate movements
 // The lotNumber is stored redundantly for audit trail even though batchId exists
 model StockMovement {
-  id         String            @id @default(uuid())
-  productId  String
-  batchId    String?           // Nullable for DEPLETE movements (no specific batch)
-  lotNumber  String?           // Nullable for DEPLETE movements
-  type       StockMovementType // IN, OUT, WITHDRAW, DEPLETE, or DISPOSE
-  quantity   Int               // Quantity moved (positive number, direction determined by type)
-  reason     String?           // Optional reason for DISPOSE movements
-  sessionId  String?           @default(uuid()) // Optional: for grouping related movements (e.g., bulk operations)
-  createdAt  DateTime          @default(now())
+  id        String            @id @default(uuid())
+  productId String
+  batchId   String? // Nullable for DEPLETE movements (no specific batch)
+  lotNumber String? // Nullable for DEPLETE movements
+  type      StockMovementType // IN, OUT, WITHDRAW, DEPLETE, or DISPOSE
+  quantity  Int // Quantity moved (positive number, direction determined by type)
+  reason    String? // Optional reason for DISPOSE movements
+  sessionId String?           @default(uuid()) // Optional: for grouping related movements (e.g., bulk operations)
+  createdAt DateTime          @default(now())
 
   // Relations
   product Product     @relation("ProductStockMovements", fields: [productId], references: [id], onDelete: Cascade)
@@ -123,8 +123,9 @@ enum PatientTitlePrefix {
 
 // Auth models
 enum UserRole {
-  ADMIN
-  STAFF
+  ADMIN // manages everything incl. master data + users + DF rules
+  STAFF // enters daily records, sees all summaries, cannot edit master data
+  DOCTOR // sees own records + DF only (filtered by linked doctorId), read-only
 }
 
 model User {
@@ -133,10 +134,15 @@ model User {
   passwordHash  String
   name          String
   role          UserRole       @default(STAFF)
+  doctorId      String?        @unique // REQUIRED when role=DOCTOR (validated in service), null otherwise
+  active        Boolean        @default(true) // soft-delete flag; inactive users are rejected at login/auth
   tokenVersion  Int            @default(0)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   refreshTokens RefreshToken[]
+  doctor        Doctor?        @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  dailyRecords  DailyRecord[]  @relation("CreatedByUser")
+
   @@index([email])
   @@map("users")
 }
@@ -150,6 +156,7 @@ model RefreshToken {
   revokedAt DateTime?
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([family])
   @@map("refresh_tokens")
@@ -160,6 +167,7 @@ model RefreshToken {
 model BootstrapLock {
   id        String   @id @default("done")
   createdAt DateTime @default(now())
+
   @@map("bootstrap_lock")
 }
 
@@ -177,11 +185,166 @@ model Patient {
   address     String?            @db.Text
   photoBase64 String?            @db.Text
 
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([nationalId])
   @@index([lastName])
   @@index([createdAt])
   @@map("patients")
+}
+
+// ===== Finance & DF Module =====
+
+// Doctor master data. Soft-deleted via `active` because old DailyRecords/DfRules reference it.
+model Doctor {
+  id        String   @id @default(uuid())
+  name      String // e.g. "ทพญ.ชนาภรณ์"
+  nickname  String? // short name for dropdowns
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user             User? // optional 1:1 — the user account for this doctor (if any)
+  dfRules          DfRule[]
+  dailyRecords     DailyRecord[]
+  incomeGuarantees IncomeGuarantee[]
+  workDays         DoctorWorkDay[]
+
+  @@index([active])
+  @@map("doctors")
+}
+
+// Treatment type master data. Soft-deleted via `active`.
+model TreatmentType {
+  id           String   @id @default(uuid())
+  name         String   @unique // ขูดหินปูน, อุดฟัน, X-ray, ปรึกษา, ...
+  defaultPrice Decimal? @db.Decimal(10, 2)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  dfRules DfRule[]
+
+  @@map("treatment_types")
+}
+
+enum DfType {
+  PERCENTAGE // % of base
+  FIXED // fixed THB amount per record
+}
+
+enum DfBase {
+  TREATMENT_FEE // computed from treatment fee only (excludes medicine/x-ray)
+  TOTAL_AMOUNT // computed from grand total (treatment + medicine/x-ray)
+}
+
+// DF rule. Resolution priority (highest → lowest):
+//  1. doctor + treatmentType (specific override)
+//  2. doctor + treatmentType=null (default for doctor)
+// If no active rule found → df = 0
+//
+// Uniqueness of one ACTIVE rule per (doctor, treatmentType) is enforced by a PARTIAL
+// unique index added in the migration SQL (WHERE active = true), because a column-list
+// @@unique would (a) not treat NULL treatmentTypeId as equal and (b) break soft-delete
+// by colliding on inactive rows.
+model DfRule {
+  id              String   @id @default(uuid())
+  doctorId        String
+  treatmentTypeId String? // null = default rule for this doctor
+  dfType          DfType
+  dfValue         Decimal  @db.Decimal(10, 2) // % (0-100) or THB
+  dfBase          DfBase   @default(TREATMENT_FEE)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  doctor        Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  treatmentType TreatmentType? @relation(fields: [treatmentTypeId], references: [id], onDelete: SetNull)
+
+  @@index([doctorId])
+  @@index([doctorId, treatmentTypeId])
+  @@map("df_rules")
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+}
+
+// Daily income record. Raw transaction row — hard-deletable (unlike master data).
+// totalAmount, dfAmount, sequenceNo are SERVER-COMPUTED; never trusted from the client.
+model DailyRecord {
+  id              String        @id @default(uuid())
+  recordDate      DateTime      @db.Date // record date (no time component)
+  sequenceNo      Int // per-day running number (1, 2, 3, ...) computed server-side
+  dn              String? // patient number
+  patientId       String? // optional link to Patient
+  patientName     String // snapshot of patient name
+  doctorId        String
+  treatmentNote   String // free text, e.g. "ขูดหินปูน/x-ray"
+  treatmentTypeId String? // optional link when it matches a TreatmentType
+  treatmentFee    Decimal       @db.Decimal(10, 2) // procedure fee
+  medicineFee     Decimal       @default(0) @db.Decimal(10, 2) // medicine / x-ray fee
+  medicineNote    String? // e.g. "ค่าน้ำยา C"
+  totalAmount     Decimal       @db.Decimal(10, 2) // = treatmentFee + medicineFee (server-computed)
+  paymentMethod   PaymentMethod
+  dfAmount        Decimal       @db.Decimal(10, 2) // doctor fee (server-computed)
+  dfRuleSnapshot  Json? // snapshot of the rule used at creation time (audit)
+  notes           String?
+  createdById     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  doctor    Doctor @relation(fields: [doctorId], references: [id])
+  createdBy User?  @relation("CreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([recordDate, sequenceNo])
+  @@index([recordDate])
+  @@index([doctorId])
+  @@index([recordDate, doctorId])
+  @@map("daily_records")
+}
+
+// Per-doctor income guarantee (ประกันรายได้): the THB floor for a FULL working day.
+// When a doctor's actual DF for a worked day is below dailyAmount × dayFraction, the clinic
+// tops up the difference (computed in financeSummaryService — never mutates DailyRecord.dfAmount).
+// Soft-deleted via `active`; one ACTIVE row per doctor is enforced by a PARTIAL unique index
+// (WHERE active = true) added in the migration SQL (mirrors df_rules_active_doctor_treatment_uq).
+model IncomeGuarantee {
+  id          String   @id @default(uuid())
+  doctorId    String
+  dailyAmount Decimal  @db.Decimal(10, 2) // guaranteed THB per FULL working day
+  active      Boolean  @default(true)
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId])
+  @@map("income_guarantees")
+}
+
+// Doctor attendance for a single day — the authoritative "worked" signal + partial-day fraction.
+// A (doctor, date) counts as worked if there is ≥1 DailyRecord OR a row here. Rows are only needed
+// for EXCEPTIONS: a partial day, or a paid day with zero patients (no DailyRecord). Absence ⇒ 1.0.
+// dayFraction is computed from startTime/endTime against clinic hours (11:00–20:00) or set directly.
+model DoctorWorkDay {
+  id          String   @id @default(uuid())
+  doctorId    String
+  workDate    DateTime @db.Date
+  startTime   String? // "HH:MM" clinic-local; null when entered as a raw fraction
+  endTime     String? // "HH:MM"
+  dayFraction Decimal  @default(1.00) @db.Decimal(3, 2) // 1.00 = full day, 0.50 = half, ...
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, workDate])
+  @@index([workDate])
+  @@index([doctorId, workDate])
+  @@map("doctor_work_days")
 }

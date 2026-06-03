@@ -28,7 +28,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   // Live DB check: verify tokenVersion so demotion and forced logout take effect immediately.
   const user = await prisma.user.findUnique({
     where: { id: payload.sub },
-    select: { id: true, role: true, tokenVersion: true },
+    select: { id: true, role: true, tokenVersion: true, doctorId: true, active: true },
   });
 
   if (!user) {
@@ -41,7 +41,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
 
-  req.user = { id: user.id, role: user.role };
+  // Soft-deleted/disabled accounts are rejected immediately even with a valid token.
+  if (!user.active) {
+    res.status(403).json({ code: 'ACCOUNT_DISABLED', message: 'Account is disabled' });
+    return;
+  }
+
+  req.user = { id: user.id, role: user.role, doctorId: user.doctorId };
   next();
 }
 

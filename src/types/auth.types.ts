@@ -11,6 +11,7 @@ export interface JwtPayload {
 export interface AuthUser {
   id: string;
   role: UserRole;
+  doctorId: string | null;
 }
 
 export interface LoginRequest {
@@ -23,6 +24,20 @@ export interface CreateUserRequest {
   password: string;
   name: string;
   role?: UserRole;
+  doctorId?: string | null;
+}
+
+export interface UpdateUserRequest {
+  name?: string;
+  role?: UserRole;
+  doctorId?: string | null;
+  active?: boolean;
+  password?: string; // admin reset
+}
+
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
 }
 
 export interface BootstrapRequest {
@@ -37,4 +52,6 @@ export interface UserResponse {
   email: string;
   name: string;
   role: UserRole;
+  doctorId: string | null;
+  active: boolean;
 }

@@ -194,6 +194,61 @@ async function seedProducts() {
   }
 }
 
+const SAMPLE_DOCTOR_NAME = "ทพญ.ชนาภรณ์";
+const DOCTOR_USER = {
+  email: "dr.chanaporn@dentsis.work",
+  password: "P@ssw0rd", // tell the doctor to change this
+  name: "ทพญ.ชนาภรณ์",
+};
+const TREATMENT_TYPES = ["ขูดหินปูน", "อุดฟัน", "X-ray", "ปรึกษา", "ถอนฟัน", "รักษารากฟัน"];
+
+async function seedFinance() {
+  // Doctor has no natural unique key → find-or-create by name (idempotent).
+  let doctor = await prisma.doctor.findFirst({ where: { name: SAMPLE_DOCTOR_NAME } });
+  if (!doctor) {
+    doctor = await prisma.doctor.create({
+      data: { name: SAMPLE_DOCTOR_NAME, nickname: "หมอชนาภรณ์" },
+    });
+  }
+
+  // Doctor user account linked to the sample doctor.
+  const passwordHash = await bcrypt.hash(DOCTOR_USER.password, 10);
+  await prisma.user.upsert({
+    where: { email: DOCTOR_USER.email },
+    update: {},
+    create: {
+      email: DOCTOR_USER.email,
+      passwordHash,
+      name: DOCTOR_USER.name,
+      role: UserRole.DOCTOR,
+      doctorId: doctor.id,
+    },
+  });
+
+  // Treatment types (name is unique).
+  for (const name of TREATMENT_TYPES) {
+    await prisma.treatmentType.upsert({ where: { name }, update: {}, create: { name } });
+  }
+
+  // Default DF rule for the sample doctor: 50% of the treatment fee.
+  const existingRule = await prisma.dfRule.findFirst({
+    where: { doctorId: doctor.id, treatmentTypeId: null, active: true },
+  });
+  if (!existingRule) {
+    await prisma.dfRule.create({
+      data: {
+        doctorId: doctor.id,
+        treatmentTypeId: null,
+        dfType: "PERCENTAGE",
+        dfValue: 50,
+        dfBase: "TREATMENT_FEE",
+      },
+    });
+  }
+
+  console.log("✓ Finance: doctor, doctor user, treatment types, DF rule seeded");
+}
+
 async function seedBootstrapLock() {
   // Seeding already creates the ADMIN user, so the one-time /api/auth/bootstrap
   // endpoint must be locked — otherwise anyone with ADMIN_BOOTSTRAP_SECRET could
@@ -210,6 +265,7 @@ async function main() {
   console.log("Seeding database...");
   await seedUsers();
   await seedProducts();
+  await seedFinance();
   await seedBootstrapLock();
   console.log("Done.");
 }

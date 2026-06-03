@@ -6,6 +6,7 @@ import {
   refreshHandler,
   logoutHandler,
   meHandler,
+  changePasswordHandler,
   createUserHandler,
 } from '../controllers/authController';
 import { requireAuth, requireRole } from '../middlewares/auth.middleware';
@@ -25,6 +26,8 @@ router.post('/login', strictLimit, loginHandler);
 router.post('/refresh', refreshHandler);
 router.post('/logout', logoutHandler);
 router.get('/me', requireAuth, meHandler);
+router.put('/password', requireAuth, changePasswordHandler);
+// Legacy admin user-create path; full user CRUD lives at /api/users (see userRoutes).
 router.post('/users', requireAuth, requireRole('ADMIN'), createUserHandler);
 
 export default router;
