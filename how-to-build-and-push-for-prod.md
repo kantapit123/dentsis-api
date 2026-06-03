@@ -2,7 +2,7 @@
 ```sh
 docker buildx build \
   --platform linux/amd64 \
-  -t ghcr.io/kantapit123/dentsis-api:1.1.0 \
+  -t ghcr.io/kantapit123/dentsis-api:1.2.0 \
   --push \
   .
 ```
