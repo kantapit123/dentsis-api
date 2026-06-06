@@ -87,7 +87,8 @@ export async function listPatientsHandler(req: Request, res: Response): Promise<
   try {
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
-    const patients = await listPatients({ search, limit });
+    const all = req.query.all === 'true';
+    const patients = await listPatients({ search, limit, all });
     res.status(200).json({ patients });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';

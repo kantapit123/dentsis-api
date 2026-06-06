@@ -1,7 +1,7 @@
 import { prisma } from '../prisma';
 import { Prisma } from '@prisma/client';
 import { Decimal, round2 } from '../utils/money';
-import { dayRangeUTC, monthRangeUTC, recordDateKey } from '../utils/date';
+import { dayRangeUTC, monthRangeUTC, rangeUTC, recordDateKey } from '../utils/date';
 import { computeTopUp } from './guaranteeCalculatorService';
 
 export interface DfByDoctorEntry {
@@ -42,6 +42,12 @@ export interface ByDateEntry {
 
 export interface MonthlySummary extends SummaryFields {
   month: string;
+  byDate: ByDateEntry[];
+}
+
+export interface PeriodSummary extends SummaryFields {
+  from: string;
+  to: string;
   byDate: ByDateEntry[];
 }
 
@@ -189,8 +195,14 @@ export async function getDailySummary(date: string, doctorId: string | null): Pr
   return { date, ...buildSummaryFields(totals, dfByDoctor, totalTopUp, records.length) };
 }
 
-export async function getMonthlySummary(month: string, doctorId: string | null): Promise<MonthlySummary> {
-  const range = monthRangeUTC(month); // validates YYYY-MM
+/**
+ * Core per-range rollup shared by the monthly and custom-period summaries. The income guarantee
+ * is evaluated **per (doctor, worked day)** across the range (worked = has a record OR a work-day row).
+ */
+async function summarizeRange(
+  range: { start: Date; end: Date },
+  doctorId: string | null,
+): Promise<SummaryFields & { byDate: ByDateEntry[] }> {
   const records = await fetchRecords(range, doctorId);
   const { totals, byDoctor } = aggregate(records);
 
@@ -271,5 +283,19 @@ export async function getMonthlySummary(month: string, doctorId: string | null):
     };
   });
 
-  return { month, ...buildSummaryFields(totals, dfByDoctor, totalTopUp, records.length), byDate };
+  return { ...buildSummaryFields(totals, dfByDoctor, totalTopUp, records.length), byDate };
+}
+
+export async function getMonthlySummary(month: string, doctorId: string | null): Promise<MonthlySummary> {
+  const range = monthRangeUTC(month); // validates YYYY-MM
+  return { month, ...(await summarizeRange(range, doctorId)) };
+}
+
+export async function getPeriodSummary(
+  from: string,
+  to: string,
+  doctorId: string | null,
+): Promise<PeriodSummary> {
+  const range = rangeUTC(from, to); // validates both bounds + range width
+  return { from, to, ...(await summarizeRange(range, doctorId)) };
 }

@@ -12,6 +12,9 @@ export const CLINIC_TZ = 'Asia/Bangkok';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
+/** Largest custom period a report may span, to keep range queries bounded. */
+export const MAX_RANGE_DAYS = 366;
+
 /** Current calendar day in the clinic timezone as `YYYY-MM-DD`. */
 export function clinicToday(): string {
   // en-CA formats as YYYY-MM-DD.
@@ -46,6 +49,21 @@ export function monthRangeUTC(month: unknown): { start: Date; end: Date } {
   const start = new Date(`${month}-01T00:00:00.000Z`);
   if (Number.isNaN(start.getTime())) throw new Error('INVALID_MONTH');
   const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  return { start, end };
+}
+
+/**
+ * Validate two `YYYY-MM-DD` strings and return the UTC [start, end) range covering
+ * [from..to] **inclusive**. Rejects `to < from` and spans wider than MAX_RANGE_DAYS
+ * with INVALID_RANGE; either malformed bound throws INVALID_DATE (via parseRecordDate).
+ */
+export function rangeUTC(from: unknown, to: unknown): { start: Date; end: Date } {
+  const start = parseRecordDate(from);
+  const last = parseRecordDate(to);
+  if (last.getTime() < start.getTime()) throw new Error('INVALID_RANGE');
+  const spanDays = Math.round((last.getTime() - start.getTime()) / 86_400_000) + 1;
+  if (spanDays > MAX_RANGE_DAYS) throw new Error('INVALID_RANGE');
+  const end = new Date(last.getTime() + 24 * 60 * 60 * 1000); // exclusive upper bound
   return { start, end };
 }
 

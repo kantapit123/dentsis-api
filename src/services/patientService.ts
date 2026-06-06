@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { CreatePatientRequest, UpdatePatientRequest, PatientResponse } from '../types/patient.types';
 
@@ -82,15 +83,17 @@ export async function createPatient(data: CreatePatientRequest): Promise<Patient
 export interface ListPatientsParams {
   search?: string;
   limit?: number;
+  /** Report mode: return the whole registry (no take cap), sorted by name for printing. */
+  all?: boolean;
 }
 
 /**
  * List patients, optionally filtered by a free-text search over
- * dn / firstName / lastName / nationalId (case-insensitive). Newest first.
+ * dn / firstName / lastName / nationalId (case-insensitive).
+ * Default: newest first, capped. `all` mode: full registry sorted by name.
  */
 export async function listPatients(params: ListPatientsParams = {}): Promise<PatientResponse[]> {
   const search = params.search?.trim();
-  const take = Math.min(Math.max(params.limit ?? 50, 1), 200);
 
   const where = search
     ? {
@@ -103,11 +106,11 @@ export async function listPatients(params: ListPatientsParams = {}): Promise<Pat
       }
     : {};
 
-  const patients = await prisma.patient.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    take,
-  });
+  const args: Prisma.PatientFindManyArgs = params.all
+    ? { where, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] }
+    : { where, orderBy: { createdAt: 'desc' }, take: Math.min(Math.max(params.limit ?? 50, 1), 200) };
+
+  const patients = await prisma.patient.findMany(args);
   return patients.map(formatPatientResponse);
 }
 
