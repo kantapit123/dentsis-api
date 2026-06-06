@@ -33,9 +33,7 @@ export interface DailyRecordResponse {
 
 export interface CreateDailyRecordInput {
   recordDate: string;
-  dn?: string | null;
-  patientId?: string | null;
-  patientName: string;
+  patientId: string; // required: the record snapshots dn + patientName from this patient
   doctorId: string;
   treatmentNote: string;
   treatmentTypeIds?: string[];
@@ -47,9 +45,7 @@ export interface CreateDailyRecordInput {
 }
 
 export interface UpdateDailyRecordInput {
-  dn?: string | null;
   patientId?: string | null;
-  patientName?: string;
   doctorId?: string;
   treatmentNote?: string;
   treatmentTypeIds?: string[];
@@ -139,8 +135,14 @@ export async function createDailyRecord(
   const recordDate = parseRecordDate(input.recordDate);
   if (isFutureDate(input.recordDate)) throw new Error('FUTURE_DATE');
 
-  const patientName = input.patientName?.trim();
-  if (!patientName) throw new Error('INVALID_PATIENT_NAME');
+  if (!input.patientId) throw new Error('INVALID_PATIENT');
+  const patient = await prisma.patient.findUnique({
+    where: { id: input.patientId },
+    select: { id: true, dn: true, firstName: true, lastName: true },
+  });
+  if (!patient) throw new Error('INVALID_PATIENT');
+  const patientName = `${patient.firstName} ${patient.lastName}`.trim();
+
   const treatmentNote = input.treatmentNote?.trim();
   if (!treatmentNote) throw new Error('INVALID_TREATMENT_NOTE');
 
@@ -160,8 +162,8 @@ export async function createDailyRecord(
 
   const baseData = {
     recordDate,
-    dn: input.dn ?? null,
-    patientId: input.patientId ?? null,
+    dn: patient.dn,
+    patientId: patient.id,
     patientName,
     doctorId: input.doctorId,
     treatmentNote,
@@ -216,9 +218,15 @@ export async function updateDailyRecord(
   if (input.doctorId !== undefined) await assertDoctorActive(doctorId);
   if (input.treatmentTypeIds !== undefined) await assertTreatmentTypesActive(treatmentTypeIds);
 
-  const patientName =
-    input.patientName !== undefined ? input.patientName.trim() : existing.patientName;
-  if (!patientName) throw new Error('INVALID_PATIENT_NAME');
+  const patientId = input.patientId !== undefined ? input.patientId : existing.patientId;
+  if (!patientId) throw new Error('INVALID_PATIENT');
+  const patient = await prisma.patient.findUnique({
+    where: { id: patientId },
+    select: { id: true, dn: true, firstName: true, lastName: true },
+  });
+  if (!patient) throw new Error('INVALID_PATIENT');
+  const patientName = `${patient.firstName} ${patient.lastName}`.trim();
+
   const treatmentNote =
     input.treatmentNote !== undefined ? input.treatmentNote.trim() : existing.treatmentNote;
   if (!treatmentNote) throw new Error('INVALID_TREATMENT_NOTE');
@@ -239,8 +247,8 @@ export async function updateDailyRecord(
   const record = await prisma.dailyRecord.update({
     where: { id },
     data: {
-      dn: input.dn !== undefined ? input.dn : existing.dn,
-      patientId: input.patientId !== undefined ? input.patientId : existing.patientId,
+      dn: patient.dn,
+      patientId: patient.id,
       patientName,
       doctorId,
       treatmentNote,

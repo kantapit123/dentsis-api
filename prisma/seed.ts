@@ -200,7 +200,7 @@ const DOCTOR_USER = {
   password: "P@ssw0rd", // tell the doctor to change this
   name: "ทพญ.ชนาภรณ์",
 };
-const TREATMENT_TYPES = ["ขูดหินปูน", "อุดฟัน", "X-ray", "ปรึกษา", "ถอนฟัน", "รักษารากฟัน"];
+const TREATMENT_TYPES = ["ขูดหินปูน", "อุดฟัน", "X-ray", "ปรึกษา", "ถอนฟัน", "รักษารากฟัน", "อื่น ๆ"];
 
 async function seedFinance() {
   // Doctor has no natural unique key → find-or-create by name (idempotent).
@@ -249,6 +249,67 @@ async function seedFinance() {
   console.log("✓ Finance: doctor, doctor user, treatment types, DF rule seeded");
 }
 
+// Sample patients so the daily-record DN selector has data to pick in dev.
+const PATIENTS = [
+  {
+    dn: "6910001",
+    nationalId: "1100200300401",
+    titlePrefix: "MISTER" as const,
+    firstName: "สมชาย",
+    lastName: "ใจดี",
+    dateOfBirth: new Date("1985-03-12"),
+    gender: "MALE" as const,
+    address: "กรุงเทพมหานคร",
+    note: null as string | null,
+  },
+  {
+    dn: "6910002",
+    nationalId: "1100200300402",
+    titlePrefix: "MISS" as const,
+    firstName: "สมหญิง",
+    lastName: "รักสุข",
+    dateOfBirth: new Date("1992-07-25"),
+    gender: "FEMALE" as const,
+    address: "นนทบุรี",
+    note: null as string | null,
+  },
+  {
+    dn: "6910003",
+    nationalId: "AA1234567", // passport
+    titlePrefix: "MRS" as const,
+    firstName: "Jane",
+    lastName: "Doe",
+    dateOfBirth: new Date("1978-11-02"),
+    gender: "FEMALE" as const,
+    address: null as string | null,
+    note: "ผู้ป่วยต่างชาติ (passport)" as string | null,
+  },
+];
+
+async function seedPatients() {
+  for (const p of PATIENTS) {
+    const existing = await prisma.patient.findFirst({
+      where: { OR: [{ dn: p.dn }, { nationalId: p.nationalId }] },
+    });
+    if (existing) continue;
+    await prisma.patient.create({
+      data: {
+        dn: p.dn,
+        datestamp: new Date(),
+        nationalId: p.nationalId,
+        titlePrefix: p.titlePrefix,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        dateOfBirth: p.dateOfBirth,
+        gender: p.gender,
+        address: p.address,
+        note: p.note,
+      },
+    });
+  }
+  console.log(`✓ Patients: ${PATIENTS.length} ensured`);
+}
+
 async function seedBootstrapLock() {
   // Seeding already creates the ADMIN user, so the one-time /api/auth/bootstrap
   // endpoint must be locked — otherwise anyone with ADMIN_BOOTSTRAP_SECRET could
@@ -266,6 +327,7 @@ async function main() {
   await seedUsers();
   await seedProducts();
   await seedFinance();
+  await seedPatients();
   await seedBootstrapLock();
   console.log("Done.");
 }

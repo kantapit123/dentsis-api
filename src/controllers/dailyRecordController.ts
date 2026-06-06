@@ -9,8 +9,8 @@ function handleDomainError(res: Response, msg: string): boolean {
     case 'FUTURE_DATE':
       res.status(400).json({ code: 'FUTURE_DATE', message: 'recordDate cannot be in the future' });
       return true;
-    case 'INVALID_PATIENT_NAME':
-      res.status(400).json({ code: 'INVALID_PATIENT_NAME', message: 'patientName is required' });
+    case 'INVALID_PATIENT':
+      res.status(400).json({ code: 'INVALID_PATIENT', message: 'A valid patientId is required (patient not found)' });
       return true;
     case 'INVALID_TREATMENT_NOTE':
       res.status(400).json({ code: 'INVALID_TREATMENT_NOTE', message: 'treatmentNote is required' });
@@ -81,19 +81,19 @@ export async function getDailyRecordHandler(req: Request, res: Response): Promis
 export async function createDailyRecordHandler(req: Request, res: Response): Promise<void> {
   try {
     const {
-      recordDate, dn, patientId, patientName, doctorId, treatmentNote,
+      recordDate, patientId, doctorId, treatmentNote,
       treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
     } = req.body;
 
-    if (!recordDate || !patientName || !doctorId || !treatmentNote || treatmentFee === undefined || !paymentMethod) {
+    if (!recordDate || !patientId || !doctorId || !treatmentNote || treatmentFee === undefined || !paymentMethod) {
       res.status(400).json({
-        error: 'Missing required fields: recordDate, patientName, doctorId, treatmentNote, treatmentFee, paymentMethod',
+        error: 'Missing required fields: recordDate, patientId, doctorId, treatmentNote, treatmentFee, paymentMethod',
       });
       return;
     }
 
     const dailyRecord = await service.createDailyRecord(
-      { recordDate, dn, patientId, patientName, doctorId, treatmentNote, treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes },
+      { recordDate, patientId, doctorId, treatmentNote, treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes },
       req.user!.id,
     );
     res.status(201).json({ dailyRecord });
@@ -108,12 +108,12 @@ export async function createDailyRecordHandler(req: Request, res: Response): Pro
 export async function updateDailyRecordHandler(req: Request, res: Response): Promise<void> {
   try {
     const {
-      dn, patientId, patientName, doctorId, treatmentNote,
+      patientId, doctorId, treatmentNote,
       treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
     } = req.body;
 
     const dailyRecord = await service.updateDailyRecord(req.params.id, {
-      dn, patientId, patientName, doctorId, treatmentNote, treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
+      patientId, doctorId, treatmentNote, treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
     });
     res.status(200).json({ dailyRecord });
   } catch (e: unknown) {

@@ -173,21 +173,26 @@ model BootstrapLock {
 
 // Patient model represents a patient record in the clinic
 model Patient {
-  id          String             @id @default(uuid())
+  id          String              @id @default(uuid())
+  dn          String?             @unique // clinic patient number (DN), e.g. "6910001". DB-nullable for legacy rows; required at API layer.
   datestamp   DateTime
-  nationalId  String             @unique
-  titlePrefix PatientTitlePrefix
+  nationalId  String              @unique // Thai 13-digit national ID or passport number
+  titlePrefix PatientTitlePrefix? // optional: the minimal manage form omits it; the DIP-chip registration page still sets it
   firstName   String
   lastName    String
   dateOfBirth DateTime
   gender      PatientGender
   cardNo      String?
-  address     String?            @db.Text
-  photoBase64 String?            @db.Text
+  address     String?             @db.Text
+  note        String?             @db.Text
+  photoBase64 String?             @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  dailyRecords DailyRecord[]
+
+  @@index([dn])
   @@index([nationalId])
   @@index([lastName])
   @@index([createdAt])
@@ -296,13 +301,15 @@ model DailyRecord {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  doctor    Doctor @relation(fields: [doctorId], references: [id])
-  createdBy User?  @relation("CreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+  doctor    Doctor   @relation(fields: [doctorId], references: [id])
+  patient   Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull) // keeps record if patient deleted; dn/patientName remain as snapshot
+  createdBy User?    @relation("CreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@unique([recordDate, sequenceNo])
   @@index([recordDate])
   @@index([doctorId])
   @@index([recordDate, doctorId])
+  @@index([patientId])
   @@map("daily_records")
 }
 
