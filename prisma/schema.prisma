@@ -283,7 +283,7 @@ model DailyRecord {
   patientName     String // snapshot of patient name
   doctorId        String
   treatmentNote   String // free text, e.g. "ขูดหินปูน/x-ray"
-  treatmentTypeId String? // optional link when it matches a TreatmentType
+  treatmentTypeIds String[] @default([]) // optional links to TreatmentType (informational tags; NOT used in DF calc)
   treatmentFee    Decimal       @db.Decimal(10, 2) // procedure fee
   medicineFee     Decimal       @default(0) @db.Decimal(10, 2) // medicine / x-ray fee
   medicineNote    String? // e.g. "ค่าน้ำยา C"

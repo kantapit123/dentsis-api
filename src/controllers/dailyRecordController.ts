@@ -82,7 +82,7 @@ export async function createDailyRecordHandler(req: Request, res: Response): Pro
   try {
     const {
       recordDate, dn, patientId, patientName, doctorId, treatmentNote,
-      treatmentTypeId, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
+      treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
     } = req.body;
 
     if (!recordDate || !patientName || !doctorId || !treatmentNote || treatmentFee === undefined || !paymentMethod) {
@@ -93,7 +93,7 @@ export async function createDailyRecordHandler(req: Request, res: Response): Pro
     }
 
     const dailyRecord = await service.createDailyRecord(
-      { recordDate, dn, patientId, patientName, doctorId, treatmentNote, treatmentTypeId, treatmentFee, medicineFee, medicineNote, paymentMethod, notes },
+      { recordDate, dn, patientId, patientName, doctorId, treatmentNote, treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes },
       req.user!.id,
     );
     res.status(201).json({ dailyRecord });
@@ -109,11 +109,11 @@ export async function updateDailyRecordHandler(req: Request, res: Response): Pro
   try {
     const {
       dn, patientId, patientName, doctorId, treatmentNote,
-      treatmentTypeId, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
+      treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
     } = req.body;
 
     const dailyRecord = await service.updateDailyRecord(req.params.id, {
-      dn, patientId, patientName, doctorId, treatmentNote, treatmentTypeId, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
+      dn, patientId, patientName, doctorId, treatmentNote, treatmentTypeIds, treatmentFee, medicineFee, medicineNote, paymentMethod, notes,
     });
     res.status(200).json({ dailyRecord });
   } catch (e: unknown) {

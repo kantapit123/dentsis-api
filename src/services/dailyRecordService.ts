@@ -17,7 +17,7 @@ export interface DailyRecordResponse {
   doctorId: string;
   doctorName: string | null;
   treatmentNote: string;
-  treatmentTypeId: string | null;
+  treatmentTypeIds: string[];
   treatmentFee: number | null;
   medicineFee: number | null;
   medicineNote: string | null;
@@ -38,7 +38,7 @@ export interface CreateDailyRecordInput {
   patientName: string;
   doctorId: string;
   treatmentNote: string;
-  treatmentTypeId?: string | null;
+  treatmentTypeIds?: string[];
   treatmentFee: number | string;
   medicineFee?: number | string;
   medicineNote?: string | null;
@@ -52,7 +52,7 @@ export interface UpdateDailyRecordInput {
   patientName?: string;
   doctorId?: string;
   treatmentNote?: string;
-  treatmentTypeId?: string | null;
+  treatmentTypeIds?: string[];
   treatmentFee?: number | string;
   medicineFee?: number | string;
   medicineNote?: string | null;
@@ -82,7 +82,7 @@ function toResponse(r: RecordWithDoctor): DailyRecordResponse {
     doctorId: r.doctorId,
     doctorName: r.doctor?.name ?? null,
     treatmentNote: r.treatmentNote,
-    treatmentTypeId: r.treatmentTypeId,
+    treatmentTypeIds: r.treatmentTypeIds,
     treatmentFee: decimalToNumber(r.treatmentFee),
     medicineFee: decimalToNumber(r.medicineFee),
     medicineNote: r.medicineNote,
@@ -107,10 +107,14 @@ async function assertDoctorActive(doctorId: string): Promise<void> {
   if (!doctor || !doctor.active) throw new Error('INACTIVE_DOCTOR');
 }
 
-async function assertTreatmentTypeActive(treatmentTypeId: string | null | undefined): Promise<void> {
-  if (!treatmentTypeId) return;
-  const tt = await prisma.treatmentType.findUnique({ where: { id: treatmentTypeId } });
-  if (!tt || !tt.active) throw new Error('INACTIVE_TREATMENT_TYPE');
+// Validates every selected treatment type exists and is active. Empty list = valid (optional field).
+async function assertTreatmentTypesActive(treatmentTypeIds: string[]): Promise<void> {
+  if (treatmentTypeIds.length === 0) return;
+  const found = await prisma.treatmentType.findMany({ where: { id: { in: treatmentTypeIds } } });
+  const activeIds = new Set(found.filter((t) => t.active).map((t) => t.id));
+  for (const id of treatmentTypeIds) {
+    if (!activeIds.has(id)) throw new Error('INACTIVE_TREATMENT_TYPE');
+  }
 }
 
 // Immutable point-in-time copy of the rule used, so editing the rule later never alters old records.
@@ -141,16 +145,17 @@ export async function createDailyRecord(
   if (!treatmentNote) throw new Error('INVALID_TREATMENT_NOTE');
 
   const paymentMethod = validatePaymentMethod(input.paymentMethod);
-  const treatmentTypeId = input.treatmentTypeId ?? null;
+  const treatmentTypeIds = input.treatmentTypeIds ?? [];
 
   await assertDoctorActive(input.doctorId);
-  await assertTreatmentTypeActive(treatmentTypeId);
+  await assertTreatmentTypesActive(treatmentTypeIds);
 
   const treatmentFee = parseAmount(input.treatmentFee);
   const medicineFee = parseAmount(input.medicineFee ?? 0);
   const totalAmount = treatmentFee.plus(medicineFee);
 
-  const { dfAmount, ruleUsed } = await calculateDf(input.doctorId, treatmentTypeId, treatmentFee, medicineFee);
+  // DF uses the doctor-default rule only; treatment types are informational tags (not a DF key).
+  const { dfAmount, ruleUsed } = await calculateDf(input.doctorId, null, treatmentFee, medicineFee);
   const dfRuleSnapshot = buildRuleSnapshot(ruleUsed);
 
   const baseData = {
@@ -160,7 +165,7 @@ export async function createDailyRecord(
     patientName,
     doctorId: input.doctorId,
     treatmentNote,
-    treatmentTypeId,
+    treatmentTypeIds,
     treatmentFee,
     medicineFee,
     medicineNote: input.medicineNote ?? null,
@@ -205,11 +210,11 @@ export async function updateDailyRecord(
 
   // recordDate and sequenceNo are immutable after creation (move = delete + recreate).
   const doctorId = input.doctorId ?? existing.doctorId;
-  const treatmentTypeId =
-    input.treatmentTypeId !== undefined ? input.treatmentTypeId ?? null : existing.treatmentTypeId;
+  const treatmentTypeIds =
+    input.treatmentTypeIds !== undefined ? input.treatmentTypeIds ?? [] : existing.treatmentTypeIds;
 
   if (input.doctorId !== undefined) await assertDoctorActive(doctorId);
-  if (input.treatmentTypeId !== undefined) await assertTreatmentTypeActive(treatmentTypeId);
+  if (input.treatmentTypeIds !== undefined) await assertTreatmentTypesActive(treatmentTypeIds);
 
   const patientName =
     input.patientName !== undefined ? input.patientName.trim() : existing.patientName;
@@ -227,7 +232,8 @@ export async function updateDailyRecord(
     input.medicineFee !== undefined ? parseAmount(input.medicineFee) : new Decimal(existing.medicineFee);
   const totalAmount = treatmentFee.plus(medicineFee);
 
-  const { dfAmount, ruleUsed } = await calculateDf(doctorId, treatmentTypeId, treatmentFee, medicineFee);
+  // DF uses the doctor-default rule only; treatment types are informational tags (not a DF key).
+  const { dfAmount, ruleUsed } = await calculateDf(doctorId, null, treatmentFee, medicineFee);
   const dfRuleSnapshot = buildRuleSnapshot(ruleUsed);
 
   const record = await prisma.dailyRecord.update({
@@ -238,7 +244,7 @@ export async function updateDailyRecord(
       patientName,
       doctorId,
       treatmentNote,
-      treatmentTypeId,
+      treatmentTypeIds,
       treatmentFee,
       medicineFee,
       medicineNote: input.medicineNote !== undefined ? input.medicineNote : existing.medicineNote,
