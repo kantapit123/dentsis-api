@@ -124,7 +124,7 @@ enum PatientTitlePrefix {
 // Auth models
 enum UserRole {
   ADMIN // manages everything incl. master data + users + DF rules
-  STAFF // enters daily records, sees all summaries, cannot edit master data
+  STAFF // daily records + summaries + inventory (stock in/out/dispose, product create/edit); cannot edit financial master data (doctors, pricing, DF rules, income guarantees, users) or hard-delete
   DOCTOR // sees own records + DF only (filtered by linked doctorId), read-only
 }
 
