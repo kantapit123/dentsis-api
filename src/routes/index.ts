@@ -11,6 +11,7 @@ import dailyRecordRoutes from './dailyRecordRoutes';
 import financeRoutes from './financeRoutes';
 import incomeGuaranteeRoutes from './incomeGuaranteeRoutes';
 import workDayRoutes from './workDayRoutes';
+import slipRoutes from './slipRoutes';
 
 const router = Router();
 
@@ -27,6 +28,15 @@ router.use('/daily-records', dailyRecordRoutes);
 router.use('/finance', financeRoutes);
 router.use('/income-guarantees', incomeGuaranteeRoutes);
 router.use('/work-days', workDayRoutes);
+
+// Slip Receiver — taline slip ingestion (static-key bearer auth, not JWT)
+// Controlled by FEATURE_SLIP_RECEIVER env var
+if (process.env.FEATURE_SLIP_RECEIVER === 'true') {
+  router.use('/slips', slipRoutes);
+  console.log('[feature] slip-receiver: enabled');
+} else {
+  console.log('[feature] slip-receiver: disabled (set FEATURE_SLIP_RECEIVER=true to enable)');
+}
 
 router.use('/', dashboardRoutes);
 

@@ -355,3 +355,36 @@ model DoctorWorkDay {
   @@index([doctorId, workDate])
   @@map("doctor_work_days")
 }
+
+// ===== Slip Receiver =====
+
+// Extraction confidence reported by the taline slip-reader (external contract — lowercase).
+//  ok      — amount + transferredAt + transRef all found
+//  partial — one or more fields null (stored anyway)
+//  failed  — nothing useful extracted (taline should not send this; accepted defensively)
+enum SlipConfidence {
+  ok
+  partial
+  failed
+}
+
+// A parsed Thai bank-transfer slip POSTed by the taline service (LINE image → OCR/QR → here).
+// All fields except `confidence` are nullable: we store whatever taline could extract.
+// Idempotency: `transRef` (decoded from the slip's mini-QR) is the natural dedup key and is
+// UNIQUE — a repeat POST returns the existing row instead of inserting a duplicate. It is
+// nullable because a missing QR yields no ref; multiple NULLs are allowed by Postgres, so
+// null-ref slips are de-duplicated on `lineMessageId` at the service layer instead.
+model Slip {
+  id            String         @id @default(uuid())
+  amount        Decimal?       @db.Decimal(12, 2) // transfer amount in THB
+  transferredAt DateTime? // slip datetime; naive input parsed as Asia/Bangkok (+07:00)
+  transRef      String?        @unique // transaction reference from the QR; primary dedup key
+  sendingBank   String? // BOT 3-digit bank code or "TrueMoney"
+  confidence    SlipConfidence
+  lineMessageId String? // LINE message id of the source image; fallback dedup key
+  createdAt     DateTime       @default(now())
+
+  @@index([lineMessageId])
+  @@index([createdAt])
+  @@map("slips")
+}

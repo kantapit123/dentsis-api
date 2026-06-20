@@ -25,6 +25,18 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Malformed-JSON guard: express.json() throws before route handlers run. Return the JSON error
+// shape used by the slip contract's 400 case instead of Express's default HTML 400 response.
+app.use(
+  (err: { type?: string }, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err?.type === 'entity.parse.failed') {
+      res.status(400).json({ error: 'Malformed JSON' });
+      return;
+    }
+    next(err);
+  }
+);
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
