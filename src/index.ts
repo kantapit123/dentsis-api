@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import routes from './routes';
+import lineWebhookRoutes from './routes/lineWebhookRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,6 +15,10 @@ app.use(cors({
   credentials: true,
 }));
 app.use(cookieParser());
+
+// Line webhook needs raw body for HMAC signature verification — mount BEFORE express.json()
+app.use('/api/line', express.raw({ type: 'application/json' }), lineWebhookRoutes);
+
 app.use(express.json({ limit: '4mb' }));
 app.use(express.urlencoded({ extended: true }));
 

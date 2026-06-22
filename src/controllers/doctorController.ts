@@ -41,8 +41,8 @@ export async function createDoctorHandler(req: Request, res: Response): Promise<
 export async function updateDoctorHandler(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { name, nickname, active } = req.body;
-    const doctor = await doctorService.updateDoctor(id, { name, nickname, active });
+    const { name, nickname, active, lineUserId } = req.body;
+    const doctor = await doctorService.updateDoctor(id, { name, nickname, active, lineUserId });
     res.status(200).json({ doctor });
   } catch (e: unknown) {
     const msg = (e as Error).message;
@@ -61,6 +61,19 @@ export async function deleteDoctorHandler(req: Request, res: Response): Promise<
     const msg = (e as Error).message;
     if (handleDomainError(res, msg)) return;
     console.error('deleteDoctor error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function generateInviteCodeHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const { id } = req.params;
+    const result = await doctorService.generateInviteCode(id);
+    res.status(200).json(result);
+  } catch (e: unknown) {
+    const msg = (e as Error).message;
+    if (handleDomainError(res, msg)) return;
+    console.error('generateInviteCode error:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

@@ -1,5 +1,6 @@
 import { AppointmentConfirmationStatus, AppointmentStatus, UserRole } from '@prisma/client';
 import { prisma } from '../prisma';
+import { sendAppointmentConfirmed, sendAppointmentCancelled, sendAppointmentBooked, sendAppointmentRescheduled } from './lineNotificationService';
 
 // HH:MM string → minutes since midnight
 function timeToMinutes(t: string): number {
@@ -312,6 +313,17 @@ export async function createAppointment(
     include: APPOINTMENT_INCLUDE,
   });
 
+  if (doctor.lineUserId) {
+    sendAppointmentBooked({
+      lineUserId: doctor.lineUserId,
+      patientName: `${patient.firstName} ${patient.lastName}`,
+      date: body.date,
+      startTime: body.startTime,
+      endTime,
+      treatmentName: treatmentType.name,
+    }).catch(err => console.error('Line booked noti failed:', err));
+  }
+
   return toAppointmentItem(appt);
 }
 
@@ -328,7 +340,14 @@ export async function updateAppointment(
     status?: AppointmentStatus;
   },
 ) {
-  const existing = await prisma.appointment.findUnique({ where: { id }, include: { treatmentType: true } });
+  const existing = await prisma.appointment.findUnique({
+    where: { id },
+    include: {
+      treatmentType: true,
+      doctor: { select: { lineUserId: true } },
+      patient: { select: { firstName: true, lastName: true } },
+    },
+  });
   if (!existing) throw new Error('APPOINTMENT_NOT_FOUND');
   if (existing.status === AppointmentStatus.COMPLETED) throw new Error('CANNOT_MODIFY_COMPLETED');
   if (existing.status === AppointmentStatus.CANCELLED) throw new Error('CANNOT_MODIFY_CANCELLED');
@@ -371,6 +390,10 @@ export async function updateAppointment(
     }
   }
 
+  const oldDate = (existing.date as Date).toISOString().slice(0, 10);
+  const oldStartTime = existing.startTime;
+  const oldEndTime = existing.endTime;
+
   const appt = await prisma.appointment.update({
     where: { id },
     data: {
@@ -383,6 +406,21 @@ export async function updateAppointment(
     },
     include: APPOINTMENT_INCLUDE,
   });
+
+  if (scheduleChanged && existing.doctor.lineUserId) {
+    sendAppointmentRescheduled({
+      lineUserId: existing.doctor.lineUserId,
+      patientName: `${existing.patient.firstName} ${existing.patient.lastName}`,
+      date: body.date ?? oldDate,
+      startTime: newStartTime,
+      endTime: newEndTime,
+      treatmentName: treatmentType.name,
+      oldDate,
+      oldStartTime,
+      oldEndTime,
+    }).catch(err => console.error('Line reschedule noti failed:', err));
+  }
+
   return toAppointmentItem(appt);
 }
 
@@ -392,18 +430,61 @@ export async function updateConfirmationStatus(id: string, confirmationStatus: A
   const existing = await prisma.appointment.findUnique({ where: { id } });
   if (!existing) throw new Error('APPOINTMENT_NOT_FOUND');
   await prisma.appointment.update({ where: { id }, data: { confirmationStatus } });
+
+  if (confirmationStatus === AppointmentConfirmationStatus.CONFIRMED) {
+    prisma.appointment.findUnique({
+      where: { id },
+      include: {
+        patient: { select: { firstName: true, lastName: true } },
+        doctor: { select: { lineUserId: true } },
+        treatmentType: { select: { name: true } },
+      },
+    }).then(appt => {
+      if (appt?.doctor.lineUserId) {
+        return sendAppointmentConfirmed({
+          lineUserId: appt.doctor.lineUserId,
+          patientName: `${appt.patient.firstName} ${appt.patient.lastName}`,
+          date: (appt.date as Date).toISOString().slice(0, 10),
+          startTime: appt.startTime,
+          endTime: appt.endTime,
+          treatmentName: appt.treatmentType.name,
+        });
+      }
+    }).catch(err => console.error('Line confirm noti failed:', err));
+  }
+
   return { id, confirmationStatus };
 }
 
 // ── Cancel ────────────────────────────────────────────────────────────────────
 
 export async function cancelAppointment(id: string, reason?: string) {
-  const existing = await prisma.appointment.findUnique({ where: { id } });
+  const existing = await prisma.appointment.findUnique({
+    where: { id },
+    include: {
+      patient: { select: { firstName: true, lastName: true } },
+      doctor: { select: { lineUserId: true } },
+      treatmentType: { select: { name: true } },
+    },
+  });
   if (!existing) throw new Error('APPOINTMENT_NOT_FOUND');
   if (existing.status === AppointmentStatus.COMPLETED) throw new Error('CANNOT_CANCEL_COMPLETED');
   if (existing.status === AppointmentStatus.CANCELLED) throw new Error('CANNOT_MODIFY_CANCELLED');
+
   await prisma.appointment.update({
     where: { id },
     data: { status: AppointmentStatus.CANCELLED, cancellationReason: reason ?? null },
   });
+
+  if (existing.doctor.lineUserId) {
+    sendAppointmentCancelled({
+      lineUserId: existing.doctor.lineUserId,
+      patientName: `${existing.patient.firstName} ${existing.patient.lastName}`,
+      date: (existing.date as Date).toISOString().slice(0, 10),
+      startTime: existing.startTime,
+      endTime: existing.endTime,
+      treatmentName: existing.treatmentType.name,
+      reason,
+    }).catch(err => console.error('Line cancel noti failed:', err));
+  }
 }
