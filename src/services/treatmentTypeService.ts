@@ -6,6 +6,8 @@ export interface TreatmentTypeResponse {
   id: string;
   name: string;
   defaultPrice: number | null;
+  durationMinutes: number;
+  color: string | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -14,11 +16,15 @@ export interface TreatmentTypeResponse {
 interface CreateInput {
   name: string;
   defaultPrice?: number | string | null;
+  durationMinutes?: number;
+  color?: string | null;
 }
 
 interface UpdateInput {
   name?: string;
   defaultPrice?: number | string | null;
+  durationMinutes?: number;
+  color?: string | null;
   active?: boolean;
 }
 
@@ -26,6 +32,8 @@ function toResponse(t: {
   id: string;
   name: string;
   defaultPrice: Prisma.Decimal | null;
+  durationMinutes: number;
+  color: string | null;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -34,6 +42,8 @@ function toResponse(t: {
     id: t.id,
     name: t.name,
     defaultPrice: decimalToNumber(t.defaultPrice),
+    durationMinutes: t.durationMinutes,
+    color: t.color,
     active: t.active,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
@@ -59,7 +69,14 @@ export async function createTreatmentType(data: CreateInput): Promise<TreatmentT
   if (!name) throw new Error('INVALID_NAME');
   const defaultPrice = resolveDefaultPrice(data.defaultPrice);
   try {
-    const type = await prisma.treatmentType.create({ data: { name, defaultPrice } });
+    const type = await prisma.treatmentType.create({
+      data: {
+        name,
+        defaultPrice,
+        ...(data.durationMinutes !== undefined ? { durationMinutes: data.durationMinutes } : {}),
+        ...(data.color !== undefined ? { color: data.color?.trim() || null } : {}),
+      },
+    });
     return toResponse(type);
   } catch (e: unknown) {
     if ((e as { code?: string }).code === 'P2002') throw new Error('TREATMENT_TYPE_NAME_TAKEN');
@@ -78,6 +95,8 @@ export async function updateTreatmentType(id: string, data: UpdateInput): Promis
       data: {
         ...(data.name !== undefined ? { name: data.name.trim() } : {}),
         ...(data.defaultPrice !== undefined ? { defaultPrice: resolveDefaultPrice(data.defaultPrice) } : {}),
+        ...(data.durationMinutes !== undefined ? { durationMinutes: data.durationMinutes } : {}),
+        ...(data.color !== undefined ? { color: data.color?.trim() || null } : {}),
         ...(data.active !== undefined ? { active: data.active } : {}),
       },
     });

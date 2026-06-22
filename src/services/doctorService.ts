@@ -4,6 +4,8 @@ export interface DoctorResponse {
   id: string;
   name: string;
   nickname: string | null;
+  color: string | null;
+  specialty: string | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -12,11 +14,15 @@ export interface DoctorResponse {
 interface CreateDoctorInput {
   name: string;
   nickname?: string | null;
+  color?: string | null;
+  specialty?: string | null;
 }
 
 interface UpdateDoctorInput {
   name?: string;
   nickname?: string | null;
+  color?: string | null;
+  specialty?: string | null;
   active?: boolean;
 }
 
@@ -24,6 +30,8 @@ function toResponse(d: {
   id: string;
   name: string;
   nickname: string | null;
+  color: string | null;
+  specialty: string | null;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +40,8 @@ function toResponse(d: {
     id: d.id,
     name: d.name,
     nickname: d.nickname,
+    color: d.color,
+    specialty: d.specialty,
     active: d.active,
     createdAt: d.createdAt.toISOString(),
     updatedAt: d.updatedAt.toISOString(),
@@ -50,7 +60,12 @@ export async function createDoctor(data: CreateDoctorInput): Promise<DoctorRespo
   const name = data.name?.trim();
   if (!name) throw new Error('INVALID_NAME');
   const doctor = await prisma.doctor.create({
-    data: { name, nickname: data.nickname?.trim() || null },
+    data: {
+      name,
+      nickname: data.nickname?.trim() || null,
+      color: data.color?.trim() || null,
+      specialty: data.specialty?.trim() || null,
+    },
   });
   return toResponse(doctor);
 }
@@ -66,6 +81,8 @@ export async function updateDoctor(id: string, data: UpdateDoctorInput): Promise
     data: {
       ...(data.name !== undefined ? { name: data.name.trim() } : {}),
       ...(data.nickname !== undefined ? { nickname: data.nickname?.trim() || null } : {}),
+      ...(data.color !== undefined ? { color: data.color?.trim() || null } : {}),
+      ...(data.specialty !== undefined ? { specialty: data.specialty?.trim() || null } : {}),
       ...(data.active !== undefined ? { active: data.active } : {}),
     },
   });

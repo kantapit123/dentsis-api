@@ -12,8 +12,13 @@ import financeRoutes from './financeRoutes';
 import incomeGuaranteeRoutes from './incomeGuaranteeRoutes';
 import workDayRoutes from './workDayRoutes';
 import slipRoutes from './slipRoutes';
+import appointmentRoutes from './appointmentRoutes';
+import featureRoutes from './featureRoutes';
 
 const router = Router();
+
+// Public — no auth required; returns enabled feature flags from env vars
+router.use('/features', featureRoutes);
 
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
@@ -36,6 +41,15 @@ if (process.env.FEATURE_SLIP_RECEIVER === 'true') {
   console.log('[feature] slip-receiver: enabled');
 } else {
   console.log('[feature] slip-receiver: disabled (set FEATURE_SLIP_RECEIVER=true to enable)');
+}
+
+// Appointments — calendar & booking system
+// Controlled by FEATURE_APPOINTMENTS env var
+if (process.env.FEATURE_APPOINTMENTS === 'true') {
+  router.use('/appointments', appointmentRoutes);
+  console.log('[feature] appointments: enabled');
+} else {
+  console.log('[feature] appointments: disabled (set FEATURE_APPOINTMENTS=true to enable)');
 }
 
 router.use('/', dashboardRoutes);

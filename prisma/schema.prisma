@@ -139,9 +139,10 @@ model User {
   tokenVersion  Int            @default(0)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  refreshTokens RefreshToken[]
-  doctor        Doctor?        @relation(fields: [doctorId], references: [id], onDelete: SetNull)
-  dailyRecords  DailyRecord[]  @relation("CreatedByUser")
+  refreshTokens        RefreshToken[]
+  doctor               Doctor?        @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  dailyRecords         DailyRecord[]  @relation("CreatedByUser")
+  createdAppointments  Appointment[]  @relation("AppointmentCreatedBy")
 
   @@index([email])
   @@map("users")
@@ -191,6 +192,7 @@ model Patient {
   updatedAt DateTime @updatedAt
 
   dailyRecords DailyRecord[]
+  appointments Appointment[]
 
   @@index([dn])
   @@index([nationalId])
@@ -206,6 +208,8 @@ model Doctor {
   id        String   @id @default(uuid())
   name      String // e.g. "ทพญ.ชนาภรณ์"
   nickname  String? // short name for dropdowns
+  color     String?  @default("#888888")
+  specialty String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -215,6 +219,7 @@ model Doctor {
   dailyRecords     DailyRecord[]
   incomeGuarantees IncomeGuarantee[]
   workDays         DoctorWorkDay[]
+  appointments     Appointment[]
 
   @@index([active])
   @@map("doctors")
@@ -222,14 +227,17 @@ model Doctor {
 
 // Treatment type master data. Soft-deleted via `active`.
 model TreatmentType {
-  id           String   @id @default(uuid())
-  name         String   @unique // ขูดหินปูน, อุดฟัน, X-ray, ปรึกษา, ...
-  defaultPrice Decimal? @db.Decimal(10, 2)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(uuid())
+  name            String   @unique // ขูดหินปูน, อุดฟัน, X-ray, ปรึกษา, ...
+  defaultPrice    Decimal? @db.Decimal(10, 2)
+  durationMinutes Int      @default(30)
+  color           String?  @default("#888888")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  dfRules DfRule[]
+  dfRules      DfRule[]
+  appointments Appointment[]
 
   @@map("treatment_types")
 }
@@ -354,6 +362,47 @@ model DoctorWorkDay {
   @@index([workDate])
   @@index([doctorId, workDate])
   @@map("doctor_work_days")
+}
+
+// ===== Appointments =====
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentConfirmationStatus {
+  WAITING_CALL
+  CONFIRMED
+}
+
+model Appointment {
+  id                 String                       @id @default(uuid())
+  patientId          String
+  doctorId           String
+  treatmentTypeId    String
+  date               DateTime                     @db.Date
+  startTime          String // "HH:MM"
+  endTime            String // "HH:MM" — computed: startTime + treatmentType.durationMinutes; stored for overlap queries
+  status             AppointmentStatus            @default(SCHEDULED)
+  confirmationStatus AppointmentConfirmationStatus @default(WAITING_CALL)
+  notes                String?
+  cancellationReason   String?
+  createdByUserId      String?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  patient     Patient       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctor      Doctor        @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  treatmentType TreatmentType @relation(fields: [treatmentTypeId], references: [id], onDelete: Restrict)
+  createdBy   User?         @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([doctorId, date])
+  @@index([patientId, date])
+  @@index([date])
+  @@map("appointments")
 }
 
 // ===== Slip Receiver =====
