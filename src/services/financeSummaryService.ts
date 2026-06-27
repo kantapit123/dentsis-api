@@ -54,6 +54,10 @@ export interface PeriodSummary extends SummaryFields {
 type SummaryRecord = Prisma.DailyRecordGetPayload<{ include: { doctor: { select: { name: true } } } }>;
 
 const includeDoctor = { doctor: { select: { name: true } } } as const;
+const includeWorkDayRelations = {
+  doctor: { select: { name: true } },
+  workSessionType: { select: { name: true } },
+} as const;
 
 const unique = (ids: string[]): string[] => [...new Set(ids)];
 
@@ -116,7 +120,12 @@ async function fetchActiveGuarantees(doctorIds: string[]): Promise<Map<string, P
   return new Map(rows.map((r) => [r.doctorId, r.dailyAmount]));
 }
 
-type WorkRow = Prisma.DoctorWorkDayGetPayload<{ include: { doctor: { select: { name: true } } } }>;
+type WorkRow = Prisma.DoctorWorkDayGetPayload<{
+  include: {
+    doctor: { select: { name: true } };
+    workSessionType: { select: { name: true } };
+  };
+}>;
 
 async function fetchWorkDays(
   range: { start: Date; end: Date },
@@ -127,8 +136,91 @@ async function fetchWorkDays(
       workDate: { gte: range.start, lt: range.end },
       ...(doctorId ? { doctorId } : {}),
     },
-    include: includeDoctor,
+    include: includeWorkDayRelations,
   });
+}
+
+/**
+ * Look up the applicable DoctorSessionRate for a specific (doctorId, workSessionTypeId, workDate).
+ * Returns the amount or null if none found.
+ */
+async function fetchSessionRateForDay(
+  doctorId: string,
+  workSessionTypeId: string,
+  workDate: Date,
+): Promise<Prisma.Decimal | null> {
+  const rate = await prisma.doctorSessionRate.findFirst({
+    where: {
+      doctorId,
+      workSessionTypeId,
+      effectiveFrom: { lte: workDate },
+      OR: [
+        { effectiveTo: null },
+        { effectiveTo: { gte: workDate } },
+      ],
+    },
+    orderBy: { effectiveFrom: 'desc' },
+    select: { amount: true },
+  });
+  return rate?.amount ?? null;
+}
+
+/**
+ * Batch-fetch all DoctorSessionRate rows for the given (doctorId, workSessionTypeId) pairs
+ * that overlap the range. Returns a Map keyed by `${doctorId}:${workSessionTypeId}` →
+ * sorted array of rate records (effectiveFrom asc) for in-memory per-date lookup.
+ */
+async function fetchSessionRates(
+  pairs: Array<{ doctorId: string; workSessionTypeId: string }>,
+  range: { start: Date; end: Date },
+): Promise<Map<string, Array<{ effectiveFrom: Date; effectiveTo: Date | null; amount: Prisma.Decimal }>>> {
+  if (pairs.length === 0) return new Map();
+
+  // Build OR conditions for each pair
+  const orConditions = pairs.map((p) => ({
+    doctorId: p.doctorId,
+    workSessionTypeId: p.workSessionTypeId,
+    // Rate overlaps the range if effectiveFrom <= range.end AND (effectiveTo >= range.start OR effectiveTo null)
+    effectiveFrom: { lte: range.end },
+    OR: [{ effectiveTo: null }, { effectiveTo: { gte: range.start } }],
+  }));
+
+  const rows = await prisma.doctorSessionRate.findMany({
+    where: { OR: orConditions },
+    select: { doctorId: true, workSessionTypeId: true, effectiveFrom: true, effectiveTo: true, amount: true },
+    orderBy: { effectiveFrom: 'asc' },
+  });
+
+  const result = new Map<
+    string,
+    Array<{ effectiveFrom: Date; effectiveTo: Date | null; amount: Prisma.Decimal }>
+  >();
+  for (const row of rows) {
+    const key = `${row.doctorId}:${row.workSessionTypeId}`;
+    const arr = result.get(key) ?? [];
+    arr.push({ effectiveFrom: row.effectiveFrom, effectiveTo: row.effectiveTo, amount: row.amount });
+    result.set(key, arr);
+  }
+  return result;
+}
+
+/**
+ * Find the applicable rate for a given workDate from a pre-fetched sorted array of rate records.
+ */
+function findRateForDate(
+  rates: Array<{ effectiveFrom: Date; effectiveTo: Date | null; amount: Prisma.Decimal }>,
+  workDate: Date,
+): Prisma.Decimal | null {
+  // Rates are sorted effectiveFrom asc; find the last one whose from <= workDate AND (to >= workDate OR to null)
+  let found: Prisma.Decimal | null = null;
+  for (const r of rates) {
+    if (r.effectiveFrom <= workDate) {
+      if (r.effectiveTo === null || r.effectiveTo >= workDate) {
+        found = r.amount;
+      }
+    }
+  }
+  return found;
 }
 
 // Build the period summary fields shared by daily & monthly from already-computed totals + per-doctor rollups.
@@ -155,6 +247,7 @@ function buildSummaryFields(
 
 export async function getDailySummary(date: string, doctorId: string | null): Promise<DailySummary> {
   const range = dayRangeUTC(date); // validates date format
+  const workDate = range.start; // the single date for the query
   const records = await fetchRecords(range, doctorId);
   const { totals, byDoctor } = aggregate(records);
 
@@ -162,35 +255,54 @@ export async function getDailySummary(date: string, doctorId: string | null): Pr
   // paid-but-zero-patient case: such a doctor has no record yet must still appear with a top-up).
   const workRows = await fetchWorkDays(range, doctorId);
   const workByDoctor = new Map(
-    workRows.map((w) => [w.doctorId, { fraction: w.dayFraction, name: w.doctor?.name ?? null }]),
+    workRows.map((w) => [
+      w.doctorId,
+      {
+        fraction: w.dayFraction,
+        name: w.doctor?.name ?? null,
+        workSessionTypeId: w.workSessionTypeId ?? null,
+      },
+    ]),
   );
 
   const doctorIds = unique([...byDoctor.keys(), ...workByDoctor.keys()]);
   const guarantees = await fetchActiveGuarantees(doctorIds);
 
   let totalTopUp = new Decimal(0);
-  const dfByDoctor: DfByDoctorEntry[] = doctorIds.map((id) => {
-    const base = byDoctor.get(id);
-    const work = workByDoctor.get(id);
-    const df = base?.df ?? new Decimal(0);
-    const fraction = work?.fraction ?? new Decimal(1); // worked (in union) but no row ⇒ full day
-    const rate = guarantees.get(id) ?? null;
-    const floor = rate ? round2(rate.times(fraction)) : new Decimal(0);
-    const topUp = rate ? computeTopUp(rate, fraction, df) : new Decimal(0);
-    totalTopUp = totalTopUp.plus(topUp);
-    return {
-      doctorId: id,
-      doctorName: base?.name ?? work?.name ?? null,
-      dfAmount: df.toNumber(),
-      recordCount: base?.recordCount ?? 0,
-      daysWorked: 1,
-      dayFraction: fraction.toNumber(),
-      guaranteeDaily: rate ? rate.toNumber() : null,
-      guaranteedFloor: floor.toNumber(),
-      topUp: topUp.toNumber(),
-      guaranteedDf: df.plus(topUp).toNumber(),
-    };
-  });
+  const dfByDoctor: DfByDoctorEntry[] = await Promise.all(
+    doctorIds.map(async (id) => {
+      const base = byDoctor.get(id);
+      const work = workByDoctor.get(id);
+      const df = base?.df ?? new Decimal(0);
+      const fraction = work?.fraction ?? new Decimal(1); // worked (in union) but no row ⇒ full day
+      const workSessionTypeId = work?.workSessionTypeId ?? null;
+
+      // Resolve rate: session-type rate takes precedence; fall back to IncomeGuarantee
+      let rate: Prisma.Decimal | null = null;
+      if (workSessionTypeId) {
+        rate = await fetchSessionRateForDay(id, workSessionTypeId, workDate);
+      }
+      if (rate === null) {
+        rate = guarantees.get(id) ?? null;
+      }
+
+      const floor = rate ? round2(rate.times(fraction)) : new Decimal(0);
+      const topUp = rate ? computeTopUp(rate, fraction, df) : new Decimal(0);
+      totalTopUp = totalTopUp.plus(topUp);
+      return {
+        doctorId: id,
+        doctorName: base?.name ?? work?.name ?? null,
+        dfAmount: df.toNumber(),
+        recordCount: base?.recordCount ?? 0,
+        daysWorked: 1,
+        dayFraction: fraction.toNumber(),
+        guaranteeDaily: rate ? rate.toNumber() : null,
+        guaranteedFloor: floor.toNumber(),
+        topUp: topUp.toNumber(),
+        guaranteedDf: df.plus(topUp).toNumber(),
+      };
+    }),
+  );
 
   return { date, ...buildSummaryFields(totals, dfByDoctor, totalTopUp, records.length) };
 }
@@ -232,29 +344,55 @@ async function summarizeRange(
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([d, v]) => ({ date: d, totalRevenue: v.totalRevenue.toNumber(), totalDf: v.totalDf.toNumber() }));
 
-  // Attendance fractions per (doctor, day).
+  // Attendance fractions + session type per (doctor, day).
   const workRows = await fetchWorkDays(range, doctorId);
   const fractionByDoctorDate = new Map<string, Map<string, Prisma.Decimal>>();
+  // Track the workSessionTypeId per (doctorId, dateKey) for session-rate lookup
+  const sessionTypeByDoctorDate = new Map<string, Map<string, string>>();
+
   for (const w of workRows) {
     const key = recordDateKey(w.workDate);
-    let perDay = fractionByDoctorDate.get(w.doctorId);
-    if (!perDay) {
-      perDay = new Map();
-      fractionByDoctorDate.set(w.doctorId, perDay);
+
+    let frPerDay = fractionByDoctorDate.get(w.doctorId);
+    if (!frPerDay) {
+      frPerDay = new Map();
+      fractionByDoctorDate.set(w.doctorId, frPerDay);
     }
-    perDay.set(key, w.dayFraction);
+    frPerDay.set(key, w.dayFraction);
+
+    if (w.workSessionTypeId) {
+      let stPerDay = sessionTypeByDoctorDate.get(w.doctorId);
+      if (!stPerDay) {
+        stPerDay = new Map();
+        sessionTypeByDoctorDate.set(w.doctorId, stPerDay);
+      }
+      stPerDay.set(key, w.workSessionTypeId);
+    }
+
     if (!nameByDoctor.has(w.doctorId)) nameByDoctor.set(w.doctorId, w.doctor?.name ?? null);
   }
 
   const doctorIds = unique([...dfByDoctorDate.keys(), ...fractionByDoctorDate.keys()]);
   const guarantees = await fetchActiveGuarantees(doctorIds);
 
+  // Batch-fetch all session rates for the pairs that appear in workRows
+  const sessionTypePairs: Array<{ doctorId: string; workSessionTypeId: string }> = [];
+  for (const [dId, stMap] of sessionTypeByDoctorDate.entries()) {
+    for (const stId of stMap.values()) {
+      if (!sessionTypePairs.some((p) => p.doctorId === dId && p.workSessionTypeId === stId)) {
+        sessionTypePairs.push({ doctorId: dId, workSessionTypeId: stId });
+      }
+    }
+  }
+  const sessionRatesMap = await fetchSessionRates(sessionTypePairs, range);
+
   let totalTopUp = new Decimal(0);
   const dfByDoctor: DfByDoctorEntry[] = doctorIds.map((id) => {
     const dfDates = dfByDoctorDate.get(id) ?? new Map<string, Prisma.Decimal>();
     const frDates = fractionByDoctorDate.get(id) ?? new Map<string, Prisma.Decimal>();
+    const stDates = sessionTypeByDoctorDate.get(id) ?? new Map<string, string>();
     const workedDates = unique([...dfDates.keys(), ...frDates.keys()]);
-    const rate = guarantees.get(id) ?? null;
+    const fallbackRate = guarantees.get(id) ?? null;
 
     let df = new Decimal(0);
     let floor = new Decimal(0);
@@ -262,6 +400,21 @@ async function summarizeRange(
     for (const key of workedDates) {
       const dfDay = dfDates.get(key) ?? new Decimal(0);
       df = df.plus(dfDay);
+
+      // Resolve rate: session-type rate takes precedence; fall back to IncomeGuarantee
+      const workSessionTypeId = stDates.get(key) ?? null;
+      let rate: Prisma.Decimal | null = null;
+      if (workSessionTypeId) {
+        const rateKey = `${id}:${workSessionTypeId}`;
+        const rateRecords = sessionRatesMap.get(rateKey) ?? [];
+        // Parse the date key back to a Date for comparison
+        const workDate = new Date(`${key}T00:00:00.000Z`);
+        rate = findRateForDate(rateRecords, workDate);
+      }
+      if (rate === null) {
+        rate = fallbackRate;
+      }
+
       if (rate) {
         const fraction = frDates.get(key) ?? new Decimal(1); // record day with no row ⇒ full day
         floor = floor.plus(round2(rate.times(fraction)));
@@ -276,7 +429,7 @@ async function summarizeRange(
       recordCount: byDoctor.get(id)?.recordCount ?? 0,
       daysWorked: workedDates.length,
       dayFraction: null,
-      guaranteeDaily: rate ? rate.toNumber() : null,
+      guaranteeDaily: fallbackRate ? fallbackRate.toNumber() : null,
       guaranteedFloor: floor.toNumber(),
       topUp: topUp.toNumber(),
       guaranteedDf: df.plus(topUp).toNumber(),
