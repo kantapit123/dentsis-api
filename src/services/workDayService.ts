@@ -14,6 +14,7 @@ export interface WorkDayResponse {
   dayFraction: number | null;
   workSessionTypeId: string | null;
   workSessionTypeName: string | null;
+  guaranteedAmountOverride: number | null;
   note: string | null;
   createdAt: string;
   updatedAt: string;
@@ -26,6 +27,7 @@ export interface UpsertWorkDayInput {
   endTime?: string | null;
   dayFraction?: number | string; // direct fallback used only when times are omitted
   workSessionTypeId?: string | null;
+  guaranteedAmountOverride?: number | null;
   note?: string | null;
 }
 
@@ -34,6 +36,7 @@ export interface UpdateWorkDayInput {
   endTime?: string | null;
   dayFraction?: number | string;
   workSessionTypeId?: string | null;
+  guaranteedAmountOverride?: number | null;
   note?: string | null;
 }
 
@@ -67,6 +70,7 @@ function toResponse(w: WorkDayWithDoctor): WorkDayResponse {
     dayFraction: decimalToNumber(w.dayFraction),
     workSessionTypeId: w.workSessionTypeId ?? null,
     workSessionTypeName: w.workSessionType?.name ?? null,
+    guaranteedAmountOverride: w.guaranteedAmountOverride ? decimalToNumber(w.guaranteedAmountOverride) : null,
     note: w.note,
     createdAt: w.createdAt.toISOString(),
     updatedAt: w.updatedAt.toISOString(),
@@ -151,13 +155,14 @@ export async function upsertWorkDay(input: UpsertWorkDayInput): Promise<WorkDayR
   );
   const note = input.note?.trim() || null;
   const workSessionTypeId = input.workSessionTypeId ?? null;
+  const guaranteedAmountOverride = input.guaranteedAmountOverride ?? null;
 
   if (workSessionTypeId) await assertWorkSessionTypeActive(workSessionTypeId);
 
   const row = await prisma.doctorWorkDay.upsert({
     where: { doctorId_workDate: { doctorId: input.doctorId, workDate } },
-    create: { doctorId: input.doctorId, workDate, startTime, endTime, dayFraction, workSessionTypeId, note },
-    update: { startTime, endTime, dayFraction, workSessionTypeId, note },
+    create: { doctorId: input.doctorId, workDate, startTime, endTime, dayFraction, workSessionTypeId, guaranteedAmountOverride, note },
+    update: { startTime, endTime, dayFraction, workSessionTypeId, guaranteedAmountOverride, note },
     include: includeDoctor,
   });
   return toResponse(row);
@@ -193,9 +198,14 @@ export async function updateWorkDay(id: string, input: UpdateWorkDayInput): Prom
     if (workSessionTypeId) await assertWorkSessionTypeActive(workSessionTypeId);
   }
 
+  const guaranteedAmountOverride =
+    input.guaranteedAmountOverride !== undefined
+      ? (input.guaranteedAmountOverride !== null ? new Decimal(input.guaranteedAmountOverride) : null)
+      : existing.guaranteedAmountOverride;
+
   const row = await prisma.doctorWorkDay.update({
     where: { id },
-    data: { startTime, endTime, dayFraction, workSessionTypeId, note },
+    data: { startTime, endTime, dayFraction, workSessionTypeId, guaranteedAmountOverride, note },
     include: includeDoctor,
   });
   return toResponse(row);
