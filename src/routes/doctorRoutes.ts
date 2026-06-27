@@ -7,6 +7,7 @@ import {
   generateInviteCodeHandler,
 } from '../controllers/doctorController';
 import { requireAuth, requireRole } from '../middlewares/auth.middleware';
+import doctorSessionRateRoutes from './doctorSessionRateRoutes';
 
 const router = Router();
 
@@ -20,5 +21,8 @@ router.post('/', requireRole('ADMIN'), createDoctorHandler);
 router.put('/:id', requireRole('ADMIN'), updateDoctorHandler);
 router.delete('/:id', requireRole('ADMIN'), deleteDoctorHandler);
 router.post('/:id/invite-code', requireRole('ADMIN'), generateInviteCodeHandler);
+
+// Per-doctor session rate history (sub-router, mergeParams enabled in the route file)
+router.use('/:doctorId/session-rates', doctorSessionRateRoutes);
 
 export default router;

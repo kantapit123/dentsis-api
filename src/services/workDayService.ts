@@ -12,6 +12,8 @@ export interface WorkDayResponse {
   startTime: string | null;
   endTime: string | null;
   dayFraction: number | null;
+  workSessionTypeId: string | null;
+  workSessionTypeName: string | null;
   note: string | null;
   createdAt: string;
   updatedAt: string;
@@ -23,6 +25,7 @@ export interface UpsertWorkDayInput {
   startTime?: string | null;
   endTime?: string | null;
   dayFraction?: number | string; // direct fallback used only when times are omitted
+  workSessionTypeId?: string | null;
   note?: string | null;
 }
 
@@ -30,6 +33,7 @@ export interface UpdateWorkDayInput {
   startTime?: string | null;
   endTime?: string | null;
   dayFraction?: number | string;
+  workSessionTypeId?: string | null;
   note?: string | null;
 }
 
@@ -41,10 +45,16 @@ export interface ListWorkDayFilter {
 }
 
 type WorkDayWithDoctor = Prisma.DoctorWorkDayGetPayload<{
-  include: { doctor: { select: { name: true } } };
+  include: {
+    doctor: { select: { name: true } };
+    workSessionType: { select: { name: true; label: true } };
+  };
 }>;
 
-const includeDoctor = { doctor: { select: { name: true } } } as const;
+const includeDoctor = {
+  doctor: { select: { name: true } },
+  workSessionType: { select: { name: true, label: true } },
+} as const;
 
 function toResponse(w: WorkDayWithDoctor): WorkDayResponse {
   return {
@@ -55,6 +65,8 @@ function toResponse(w: WorkDayWithDoctor): WorkDayResponse {
     startTime: w.startTime,
     endTime: w.endTime,
     dayFraction: decimalToNumber(w.dayFraction),
+    workSessionTypeId: w.workSessionTypeId ?? null,
+    workSessionTypeName: w.workSessionType?.name ?? null,
     note: w.note,
     createdAt: w.createdAt.toISOString(),
     updatedAt: w.updatedAt.toISOString(),
@@ -64,6 +76,11 @@ function toResponse(w: WorkDayWithDoctor): WorkDayResponse {
 async function assertDoctorActive(doctorId: string): Promise<void> {
   const doctor = await prisma.doctor.findUnique({ where: { id: doctorId } });
   if (!doctor || !doctor.active) throw new Error('INACTIVE_DOCTOR');
+}
+
+async function assertWorkSessionTypeActive(workSessionTypeId: string): Promise<void> {
+  const type = await prisma.workSessionType.findUnique({ where: { id: workSessionTypeId } });
+  if (!type || !type.active) throw new Error('SESSION_TYPE_NOT_FOUND');
 }
 
 // dayFraction entered directly (no times): must be in (0, 1].
@@ -133,11 +150,14 @@ export async function upsertWorkDay(input: UpsertWorkDayInput): Promise<WorkDayR
     input.dayFraction,
   );
   const note = input.note?.trim() || null;
+  const workSessionTypeId = input.workSessionTypeId ?? null;
+
+  if (workSessionTypeId) await assertWorkSessionTypeActive(workSessionTypeId);
 
   const row = await prisma.doctorWorkDay.upsert({
     where: { doctorId_workDate: { doctorId: input.doctorId, workDate } },
-    create: { doctorId: input.doctorId, workDate, startTime, endTime, dayFraction, note },
-    update: { startTime, endTime, dayFraction, note },
+    create: { doctorId: input.doctorId, workDate, startTime, endTime, dayFraction, workSessionTypeId, note },
+    update: { startTime, endTime, dayFraction, workSessionTypeId, note },
     include: includeDoctor,
   });
   return toResponse(row);
@@ -167,9 +187,15 @@ export async function updateWorkDay(id: string, input: UpdateWorkDayInput): Prom
 
   const note = input.note !== undefined ? input.note?.trim() || null : existing.note;
 
+  let workSessionTypeId: string | null = existing.workSessionTypeId ?? null;
+  if (input.workSessionTypeId !== undefined) {
+    workSessionTypeId = input.workSessionTypeId ?? null;
+    if (workSessionTypeId) await assertWorkSessionTypeActive(workSessionTypeId);
+  }
+
   const row = await prisma.doctorWorkDay.update({
     where: { id },
-    data: { startTime, endTime, dayFraction, note },
+    data: { startTime, endTime, dayFraction, workSessionTypeId, note },
     include: includeDoctor,
   });
   return toResponse(row);

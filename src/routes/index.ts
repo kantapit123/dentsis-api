@@ -11,6 +11,7 @@ import dailyRecordRoutes from './dailyRecordRoutes';
 import financeRoutes from './financeRoutes';
 import incomeGuaranteeRoutes from './incomeGuaranteeRoutes';
 import workDayRoutes from './workDayRoutes';
+import workSessionTypeRoutes from './workSessionTypeRoutes';
 import slipRoutes from './slipRoutes';
 import appointmentRoutes from './appointmentRoutes';
 import featureRoutes from './featureRoutes';
@@ -33,6 +34,7 @@ router.use('/daily-records', dailyRecordRoutes);
 router.use('/finance', financeRoutes);
 router.use('/income-guarantees', incomeGuaranteeRoutes);
 router.use('/work-days', workDayRoutes);
+router.use('/work-session-types', workSessionTypeRoutes);
 
 // Slip Receiver — taline slip ingestion (static-key bearer auth, not JWT)
 // Controlled by FEATURE_SLIP_RECEIVER env var

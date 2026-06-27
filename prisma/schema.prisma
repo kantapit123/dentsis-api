@@ -220,6 +220,7 @@ model Doctor {
   dailyRecords     DailyRecord[]
   incomeGuarantees IncomeGuarantee[]
   workDays         DoctorWorkDay[]
+  sessionRates     DoctorSessionRate[]
   appointments     Appointment[]
   inviteCodes      DoctorInviteCode[]
 
@@ -370,17 +371,56 @@ model DoctorWorkDay {
   workDate    DateTime @db.Date
   startTime   String? // "HH:MM" clinic-local; null when entered as a raw fraction
   endTime     String? // "HH:MM"
-  dayFraction Decimal  @default(1.00) @db.Decimal(3, 2) // 1.00 = full day, 0.50 = half, ...
-  note        String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  dayFraction       Decimal  @default(1.00) @db.Decimal(3, 2) // 1.00 = full day, 0.50 = half, ...
+  note              String?
+  workSessionTypeId String?           // null = use IncomeGuarantee fallback
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  doctor          Doctor           @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  workSessionType WorkSessionType? @relation(fields: [workSessionTypeId], references: [id], onDelete: SetNull)
 
   @@unique([doctorId, workDate])
   @@index([workDate])
   @@index([doctorId, workDate])
   @@map("doctor_work_days")
+}
+
+// Clinic-configurable work session types (parttime, fulltime, locum, on-call, etc.)
+model WorkSessionType {
+  id        String   @id @default(uuid())
+  name      String   @unique // e.g. "parttime", "fulltime"
+  label     String           // display name e.g. "พาร์ทไทม์", "ฟูลไทม์"
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rates    DoctorSessionRate[]
+  workDays DoctorWorkDay[]
+
+  @@index([active])
+  @@map("work_session_types")
+}
+
+// Per-doctor income guarantee amount per session type, with effective date range for history.
+// Multiple non-overlapping rows per (doctorId, workSessionTypeId) represent rate changes over time.
+model DoctorSessionRate {
+  id                String    @id @default(uuid())
+  doctorId          String
+  workSessionTypeId String
+  amount            Decimal   @db.Decimal(10, 2)
+  effectiveFrom     DateTime  @db.Date
+  effectiveTo       DateTime? @db.Date  // null = currently active (no end date)
+  note              String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  doctor          Doctor          @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  workSessionType WorkSessionType @relation(fields: [workSessionTypeId], references: [id], onDelete: Restrict)
+
+  @@index([doctorId, workSessionTypeId, effectiveFrom])
+  @@index([doctorId])
+  @@map("doctor_session_rates")
 }
 
 // ===== Appointments =====
