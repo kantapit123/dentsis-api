@@ -373,8 +373,9 @@ model DoctorWorkDay {
   endTime     String? // "HH:MM"
   dayFraction       Decimal  @default(1.00) @db.Decimal(3, 2) // 1.00 = full day, 0.50 = half, ...
   note              String?
-  workSessionTypeId String?           // null = use IncomeGuarantee fallback
-  createdAt         DateTime @default(now())
+  workSessionTypeId        String?  // null = use IncomeGuarantee fallback
+  guaranteedAmountOverride Decimal? @db.Decimal(10, 2) // per-day override; takes priority over session-type rate and IncomeGuarantee
+  createdAt                DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   doctor          Doctor           @relation(fields: [doctorId], references: [id], onDelete: Cascade)
@@ -462,6 +463,17 @@ model Appointment {
   @@index([patientId, date])
   @@index([date])
   @@map("appointments")
+}
+
+// ===== Clinic Settings =====
+
+model ClinicSetting {
+  id              Int      @id @default(1)
+  clinicOpenTime  String   @default("11:00")
+  clinicCloseTime String   @default("20:00")
+  updatedAt       DateTime @updatedAt
+
+  @@map("clinic_settings")
 }
 
 // ===== Slip Receiver =====

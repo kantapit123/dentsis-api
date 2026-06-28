@@ -32,12 +32,12 @@ export const FULL_DAY_MIN = parseHHMM(CLINIC_CLOSE) - parseHHMM(CLINIC_OPEN);
  *   clamp(round2((endMin − startMin) / FULL_DAY_MIN), 0, 1)
  * Throws INVALID_TIME_RANGE when end ≤ start; INVALID_TIME on a malformed time.
  */
-export function computeDayFraction(startTime: unknown, endTime: unknown): Prisma.Decimal {
+export function computeDayFraction(startTime: unknown, endTime: unknown, fullDayMin = FULL_DAY_MIN): Prisma.Decimal {
   const startMin = parseHHMM(startTime);
   const endMin = parseHHMM(endTime);
   if (endMin <= startMin) throw new Error('INVALID_TIME_RANGE');
 
-  const fraction = round2(new Decimal(endMin - startMin).div(FULL_DAY_MIN));
+  const fraction = round2(new Decimal(endMin - startMin).div(fullDayMin));
   if (fraction.greaterThan(1)) return new Decimal(1);
   if (fraction.lessThan(0)) return new Decimal(0);
   return fraction;

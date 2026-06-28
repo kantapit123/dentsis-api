@@ -2,7 +2,8 @@ import { prisma } from '../prisma';
 import { Prisma } from '@prisma/client';
 import { Decimal, decimalToNumber, round2 } from '../utils/money';
 import { parseRecordDate, isFutureDate, dayRangeUTC, recordDateKey } from '../utils/date';
-import { computeDayFraction } from './guaranteeCalculatorService';
+import { computeDayFraction, parseHHMM } from './guaranteeCalculatorService';
+import { getClinicSettings } from './clinicSettingService';
 
 export interface WorkDayResponse {
   id: string;
@@ -103,13 +104,14 @@ function resolveAttendance(
   startTime: string | null | undefined,
   endTime: string | null | undefined,
   dayFraction: number | string | undefined,
+  fullDayMin?: number,
 ): { startTime: string | null; endTime: string | null; dayFraction: Prisma.Decimal } {
   const hasStart = startTime !== null && startTime !== undefined && startTime !== '';
   const hasEnd = endTime !== null && endTime !== undefined && endTime !== '';
 
   if (hasStart || hasEnd) {
     if (!hasStart || !hasEnd) throw new Error('INVALID_TIME_RANGE'); // both or neither
-    return { startTime: startTime!, endTime: endTime!, dayFraction: computeDayFraction(startTime, endTime) };
+    return { startTime: startTime!, endTime: endTime!, dayFraction: computeDayFraction(startTime, endTime, fullDayMin) };
   }
   if (dayFraction !== undefined && dayFraction !== null && (dayFraction as unknown) !== '') {
     return { startTime: null, endTime: null, dayFraction: validateFraction(dayFraction) };
@@ -148,10 +150,13 @@ export async function upsertWorkDay(input: UpsertWorkDayInput): Promise<WorkDayR
   if (isFutureDate(input.workDate)) throw new Error('FUTURE_DATE');
   await assertDoctorActive(input.doctorId);
 
+  const clinicSettings = await getClinicSettings();
+  const fullDayMin = parseHHMM(clinicSettings.clinicCloseTime) - parseHHMM(clinicSettings.clinicOpenTime);
   const { startTime, endTime, dayFraction } = resolveAttendance(
     input.startTime,
     input.endTime,
     input.dayFraction,
+    fullDayMin,
   );
   const note = input.note?.trim() || null;
   const workSessionTypeId = input.workSessionTypeId ?? null;
@@ -172,18 +177,27 @@ export async function updateWorkDay(id: string, input: UpdateWorkDayInput): Prom
   const existing = await prisma.doctorWorkDay.findUnique({ where: { id } });
   if (!existing) throw new Error('WORK_DAY_NOT_FOUND');
 
+  const clinicSettings = await getClinicSettings();
+  const fullDayMin = parseHHMM(clinicSettings.clinicCloseTime) - parseHHMM(clinicSettings.clinicOpenTime);
+
   let startTime = existing.startTime;
   let endTime = existing.endTime;
   let dayFraction: Prisma.Decimal = existing.dayFraction;
 
   if (input.startTime !== undefined || input.endTime !== undefined) {
-    // A time change re-derives the fraction (both times required).
     const s = input.startTime !== undefined ? input.startTime : existing.startTime;
     const e = input.endTime !== undefined ? input.endTime : existing.endTime;
-    if (!s || !e) throw new Error('INVALID_TIME_RANGE');
-    dayFraction = computeDayFraction(s, e);
-    startTime = s;
-    endTime = e;
+    if (!s && !e) {
+      // explicitly clearing times — fall back to dayFraction
+      startTime = null;
+      endTime = null;
+      if (input.dayFraction !== undefined) dayFraction = validateFraction(input.dayFraction);
+    } else {
+      if (!s || !e) throw new Error('INVALID_TIME_RANGE'); // one without the other
+      dayFraction = computeDayFraction(s, e, fullDayMin);
+      startTime = s;
+      endTime = e;
+    }
   } else if (input.dayFraction !== undefined) {
     dayFraction = validateFraction(input.dayFraction);
     startTime = null;

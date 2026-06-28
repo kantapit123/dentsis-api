@@ -25,9 +25,8 @@ CREATE TABLE "doctor_session_rates" (
     CONSTRAINT "doctor_session_rates_pkey" PRIMARY KEY ("id")
 );
 
--- AlterTable: nullable columns — zero-downtime safe (no backfill, no default required)
+-- AlterTable: nullable column — zero-downtime safe (no backfill, no default required)
 ALTER TABLE "doctor_work_days" ADD COLUMN "workSessionTypeId" TEXT;
-ALTER TABLE "doctor_work_days" ADD COLUMN "guaranteedAmountOverride" DECIMAL(10,2);
 
 -- CreateIndex
 CREATE UNIQUE INDEX "work_session_types_name_key" ON "work_session_types"("name");

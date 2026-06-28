@@ -73,8 +73,8 @@ export async function upsertWorkDayHandler(req: Request, res: Response): Promise
 export async function updateWorkDayHandler(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { startTime, endTime, dayFraction, note } = req.body;
-    const workDay = await service.updateWorkDay(id, { startTime, endTime, dayFraction, note });
+    const { startTime, endTime, dayFraction, note, workSessionTypeId, guaranteedAmountOverride } = req.body;
+    const workDay = await service.updateWorkDay(id, { startTime, endTime, dayFraction, note, workSessionTypeId, guaranteedAmountOverride });
     res.status(200).json({ workDay });
   } catch (e: unknown) {
     const msg = (e as Error).message;

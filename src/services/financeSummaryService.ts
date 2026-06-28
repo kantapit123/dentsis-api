@@ -261,6 +261,7 @@ export async function getDailySummary(date: string, doctorId: string | null): Pr
         fraction: w.dayFraction,
         name: w.doctor?.name ?? null,
         workSessionTypeId: w.workSessionTypeId ?? null,
+        guaranteedAmountOverride: w.guaranteedAmountOverride ?? null,
       },
     ]),
   );
@@ -277,9 +278,12 @@ export async function getDailySummary(date: string, doctorId: string | null): Pr
       const fraction = work?.fraction ?? new Decimal(1); // worked (in union) but no row ⇒ full day
       const workSessionTypeId = work?.workSessionTypeId ?? null;
 
-      // Resolve rate: session-type rate takes precedence; fall back to IncomeGuarantee
+      // Resolve rate: guaranteedAmountOverride > session-type rate > IncomeGuarantee
+      const guaranteedAmountOverride = work?.guaranteedAmountOverride ?? null;
       let rate: Prisma.Decimal | null = null;
-      if (workSessionTypeId) {
+      if (guaranteedAmountOverride !== null) {
+        rate = guaranteedAmountOverride;
+      } else if (workSessionTypeId) {
         rate = await fetchSessionRateForDay(id, workSessionTypeId, workDate);
       }
       if (rate === null) {
@@ -349,6 +353,8 @@ async function summarizeRange(
   const fractionByDoctorDate = new Map<string, Map<string, Prisma.Decimal>>();
   // Track the workSessionTypeId per (doctorId, dateKey) for session-rate lookup
   const sessionTypeByDoctorDate = new Map<string, Map<string, string>>();
+  // Track guaranteedAmountOverride per (doctorId, dateKey); takes priority over session-type rate
+  const overrideByDoctorDate = new Map<string, Map<string, Prisma.Decimal>>();
 
   for (const w of workRows) {
     const key = recordDateKey(w.workDate);
@@ -367,6 +373,15 @@ async function summarizeRange(
         sessionTypeByDoctorDate.set(w.doctorId, stPerDay);
       }
       stPerDay.set(key, w.workSessionTypeId);
+    }
+
+    if (w.guaranteedAmountOverride) {
+      let ovPerDay = overrideByDoctorDate.get(w.doctorId);
+      if (!ovPerDay) {
+        ovPerDay = new Map();
+        overrideByDoctorDate.set(w.doctorId, ovPerDay);
+      }
+      ovPerDay.set(key, w.guaranteedAmountOverride);
     }
 
     if (!nameByDoctor.has(w.doctorId)) nameByDoctor.set(w.doctorId, w.doctor?.name ?? null);
@@ -391,6 +406,7 @@ async function summarizeRange(
     const dfDates = dfByDoctorDate.get(id) ?? new Map<string, Prisma.Decimal>();
     const frDates = fractionByDoctorDate.get(id) ?? new Map<string, Prisma.Decimal>();
     const stDates = sessionTypeByDoctorDate.get(id) ?? new Map<string, string>();
+    const ovDates = overrideByDoctorDate.get(id) ?? new Map<string, Prisma.Decimal>();
     const workedDates = unique([...dfDates.keys(), ...frDates.keys()]);
     const fallbackRate = guarantees.get(id) ?? null;
 
@@ -401,15 +417,19 @@ async function summarizeRange(
       const dfDay = dfDates.get(key) ?? new Decimal(0);
       df = df.plus(dfDay);
 
-      // Resolve rate: session-type rate takes precedence; fall back to IncomeGuarantee
-      const workSessionTypeId = stDates.get(key) ?? null;
+      // Resolve rate: guaranteedAmountOverride > session-type rate > IncomeGuarantee
+      const overrideAmt = ovDates.get(key) ?? null;
       let rate: Prisma.Decimal | null = null;
-      if (workSessionTypeId) {
-        const rateKey = `${id}:${workSessionTypeId}`;
-        const rateRecords = sessionRatesMap.get(rateKey) ?? [];
-        // Parse the date key back to a Date for comparison
-        const workDate = new Date(`${key}T00:00:00.000Z`);
-        rate = findRateForDate(rateRecords, workDate);
+      if (overrideAmt !== null) {
+        rate = overrideAmt;
+      } else {
+        const workSessionTypeId = stDates.get(key) ?? null;
+        if (workSessionTypeId) {
+          const rateKey = `${id}:${workSessionTypeId}`;
+          const rateRecords = sessionRatesMap.get(rateKey) ?? [];
+          const workDate = new Date(`${key}T00:00:00.000Z`);
+          rate = findRateForDate(rateRecords, workDate);
+        }
       }
       if (rate === null) {
         rate = fallbackRate;
