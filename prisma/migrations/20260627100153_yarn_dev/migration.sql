@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "doctor_session_rates_doctorId_workSessionTypeId_effectiveFrom_i" RENAME TO "doctor_session_rates_doctorId_workSessionTypeId_effectiveFr_idx";
